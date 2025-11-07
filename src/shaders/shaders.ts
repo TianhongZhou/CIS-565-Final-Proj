@@ -7,8 +7,6 @@ import commonRaw from './common.wgsl?raw';
 import naiveVertRaw from './naive.vs.wgsl?raw';
 import naiveFragRaw from './naive.fs.wgsl?raw';
 
-import moveLightsComputeRaw from './move_lights.cs.wgsl?raw';
-
 // CONSTANTS (for use in shaders)
 // =================================
 
@@ -49,5 +47,3 @@ function processShaderRaw(raw: string) {
 
 export const naiveVertSrc: string = processShaderRaw(naiveVertRaw);
 export const naiveFragSrc: string = processShaderRaw(naiveFragRaw);
-
-export const moveLightsComputeSrc: string = processShaderRaw(moveLightsComputeRaw);
