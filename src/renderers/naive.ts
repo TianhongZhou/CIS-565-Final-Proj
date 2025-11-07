@@ -17,7 +17,6 @@ export class NaiveRenderer extends renderer.Renderer {
         this.sceneUniformsBindGroupLayout = renderer.device.createBindGroupLayout({
             label: "scene uniforms bind group layout",
             entries: [
-                // TODO-1.2: add an entry for camera uniforms at binding 0, visible to only the vertex shader, and of type "uniform"
                 {
                     binding: 0,
                     visibility: GPUShaderStage.VERTEX,
@@ -30,9 +29,6 @@ export class NaiveRenderer extends renderer.Renderer {
             label: "scene uniforms bind group",
             layout: this.sceneUniformsBindGroupLayout,
             entries: [
-                // TODO-1.2: add an entry for camera uniforms at binding 0
-                // you can access the camera using `this.camera`
-                // if you run into TypeScript errors, you're probably trying to upload the host buffer instead
                 {
                     binding: 0,
                     resource: { buffer: this.camera.uniformsBuffer }
@@ -105,7 +101,6 @@ export class NaiveRenderer extends renderer.Renderer {
         });
         renderPass.setPipeline(this.pipeline);
 
-        // TODO-1.2: bind `this.sceneUniformsBindGroup` to index `shaders.constants.bindGroup_scene`
         renderPass.setBindGroup(shaders.constants.bindGroup_scene, this.sceneUniformsBindGroup);
 
         this.scene.iterate(node => {

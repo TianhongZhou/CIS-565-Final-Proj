@@ -7,11 +7,9 @@ class CameraUniforms {
     private readonly floatView = new Float32Array(this.buffer);
 
     set viewProjMat(mat: Float32Array) {
-        // TODO-1.1: set the first 16 elements of `this.floatView` to the input `mat`
         this.floatView.set(mat.subarray(0, 16), 0);
     }
 
-    // TODO-2: add extra functions to set values needed for light clustering here
     set viewMat(mat: Float32Array) {
         this.floatView.set(mat.slice(0, 16), 16);
     }
@@ -60,11 +58,6 @@ export class Camera {
     keys: { [key: string]: boolean } = {};
 
     constructor () {
-        // TODO-1.1: set `this.uniformsBuffer` to a new buffer of size `this.uniforms.buffer.byteLength`
-        // ensure the usage is set to `GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST` since we will be copying to this buffer
-        // check `lights.ts` for examples of using `device.createBuffer()`
-        //
-        // note that you can add more variables (e.g. inverse proj matrix) to this buffer in later parts of the assignment
         this.uniformsBuffer = device.createBuffer({
             size: this.uniforms.buffer.byteLength,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
@@ -165,15 +158,12 @@ export class Camera {
         const lookPos = vec3.add(this.cameraPos, vec3.scale(this.cameraFront, 1));
         const viewMat = mat4.lookAt(this.cameraPos, lookPos, [0, 1, 0]);
         const viewProjMat = mat4.mul(this.projMat, viewMat);
-        // TODO-1.1: set `this.uniforms.viewProjMat` to the newly calculated view proj mat
+        
         this.uniforms.viewProjMat = viewProjMat;
 
-        // TODO-2: write to extra buffers needed for light clustering here
         this.uniforms.viewMat = viewMat;
         this.uniforms.invViewMat = mat4.inverse(viewMat);
 
-        // TODO-1.1: upload `this.uniforms.buffer` (host side) to `this.uniformsBuffer` (device side)
-        // check `lights.ts` for examples of using `device.queue.writeBuffer()`
         device.queue.writeBuffer(this.uniformsBuffer, 0, this.uniforms.buffer);
     }
 }
