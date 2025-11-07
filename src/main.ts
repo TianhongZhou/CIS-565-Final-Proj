@@ -12,7 +12,7 @@ await initWebGPU();
 setupLoaders();
 
 let scene = new Scene();
-await scene.loadGltf('./scenes/sponza/Sponza.gltf');
+//await scene.loadGltf('./scenes/sponza/Sponza.gltf');
 
 const camera = new Camera();
 
@@ -24,7 +24,15 @@ const gui = new GUI();
 
 const stage = new Stage(scene, camera, stats);
 
-var renderer: Renderer | undefined;
+var renderer: NaiveRenderer | undefined;
 
 renderer?.stop();
 renderer = new NaiveRenderer(stage);
+
+const W=256, H=256;
+const arr = new Float32Array(W * H);
+// renderer.setHeightUpdater((dt, out) => {
+//   simulate(dt, out);
+// });
+renderer.setHeightParams(1, 1, 1, 0);
+renderer.updateHeight(arr, W, H);

@@ -5,6 +5,9 @@ import commonRaw from './common.wgsl?raw';
 import naiveVertRaw from './naive.vs.wgsl?raw';
 import naiveFragRaw from './naive.fs.wgsl?raw';
 
+import waterVertRaw from './water.vs.wgsl?raw';
+import waterFragRaw from './water.fs.wgsl?raw';
+
 // CONSTANTS (for use in shaders)
 export const constants = {
     bindGroup_scene: 0,
@@ -28,3 +31,6 @@ function processShaderRaw(raw: string) {
 
 export const naiveVertSrc: string = processShaderRaw(naiveVertRaw);
 export const naiveFragSrc: string = processShaderRaw(naiveFragRaw);
+
+export const waterVertSrc: string = processShaderRaw(waterVertRaw);
+export const waterFragSrc: string = processShaderRaw(waterFragRaw);

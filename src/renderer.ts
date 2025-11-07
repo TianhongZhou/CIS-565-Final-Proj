@@ -123,6 +123,8 @@ export abstract class Renderer {
 
     protected abstract draw(): void;
 
+    protected onBeforeDraw(_dtMs: number): void {}
+
     // CHECKITOUT: this is the main rendering loop
     private onFrame(time: number) {
         if (this.prevTime == 0) {
@@ -134,6 +136,7 @@ export abstract class Renderer {
 
         this.stats.begin();
 
+        this.onBeforeDraw(deltaTime);
         this.draw();
 
         this.stats.end();
