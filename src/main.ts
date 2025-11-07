@@ -3,9 +3,6 @@ import { GUI } from 'dat.gui';
 
 import { initWebGPU, Renderer } from './renderer';
 import { NaiveRenderer } from './renderers/naive';
-import { ForwardPlusRenderer } from './renderers/forward_plus';
-import { ClusteredDeferredRenderer } from './renderers/clustered_deferred';
-import { ClusteredDeferredBlurRenderer } from './renderers/clustered_deferred_blur';
 
 import { setupLoaders, Scene } from './stage/scene';
 import { Lights } from './stage/lights';
@@ -34,27 +31,5 @@ const stage = new Stage(scene, lights, camera, stats);
 
 var renderer: Renderer | undefined;
 
-function setRenderer(mode: string) {
-    renderer?.stop();
-
-    switch (mode) {
-        case renderModes.naive:
-            renderer = new NaiveRenderer(stage);
-            break;
-        case renderModes.forwardPlus:
-            renderer = new ForwardPlusRenderer(stage);
-            break;
-        case renderModes.clusteredDeferred:
-            renderer = new ClusteredDeferredRenderer(stage);
-            break;
-        case renderModes.clusteredDeferredBlur:
-            renderer = new ClusteredDeferredBlurRenderer(stage);
-            break;
-    }
-}
-
-const renderModes = { naive: 'naive', forwardPlus: 'forward+', clusteredDeferred: 'clustered deferred', clusteredDeferredBlur: 'clustered deferred blur' };
-let renderModeController = gui.add({ mode: renderModes.naive }, 'mode', renderModes);
-renderModeController.onChange(setRenderer);
-
-setRenderer(renderModeController.getValue());
+renderer?.stop();
+renderer = new NaiveRenderer(stage);
