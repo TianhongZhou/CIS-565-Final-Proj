@@ -29,10 +29,21 @@ var renderer: NaiveRenderer | undefined;
 renderer?.stop();
 renderer = new NaiveRenderer(stage);
 
+// Height map render
+// Allocate a heightmap (W×H). Each texel is one float (r32float).
 const W=256, H=256;
 const arr = new Float32Array(W * H);
+
+// TODO: change simulate(dt, out) to the real simulation function
 // renderer.setHeightUpdater((dt, out) => {
 //   simulate(dt, out);
 // });
+
+// Set water-surface parameters:
+// worldScaleXY -> the grid spans [-a,+b] in X and Z (width/depth = 2 units)
+// heightScale  -> amplitude multiplier for heights sampled from the texture
+// baseLevel    -> lifts the whole plane in world Y (0 = centered at origin)
 renderer.setHeightParams(1, 1, 1, 0);
+
+// Initialize GPU height texture and bind groups with the first frame’s data.
 renderer.updateHeight(arr, W, H);
