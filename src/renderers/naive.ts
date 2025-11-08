@@ -135,6 +135,16 @@ export class NaiveRenderer extends renderer.Renderer {
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         });
         
+        /*
+        0 = uvTexel.x
+        1 = uvTexel.y
+        2 = worldScale.x
+        3 = worldScale.y
+        4 = heightScale
+        5 = baseLevel
+        6 = unassigned?
+        7 = unassigned?
+        */
         const defaults = new Float32Array([1/256,1/256, 500,500, 10, 0, 0, 0]);
         renderer.device.queue.writeBuffer(this.heightConsts, 0, defaults);
 
@@ -234,6 +244,8 @@ export class NaiveRenderer extends renderer.Renderer {
         const data = new Float32Array(heightData);
 
         const sizeChanged = (w !== this.heightW) || (h !== this.heightH);
+
+        //If the size has changed, the texture size will change, so we need to recreate the texture and update the bind group layout it's in
         if (sizeChanged) {
             this.heightW = w; this.heightH = h;
 
@@ -244,7 +256,7 @@ export class NaiveRenderer extends renderer.Renderer {
             });
 
             renderer.device.queue.writeBuffer(this.heightConsts, 0, new Float32Array([1/w, 1/h]));
-
+            
             this.heightBindGroup = renderer.device.createBindGroup({
             layout: this.heightBindGroupLayout,
             entries: [
@@ -259,6 +271,7 @@ export class NaiveRenderer extends renderer.Renderer {
         const align = 256;
         const padded = Math.ceil(rowBytes / align) * align;
 
+        //
         if (padded === rowBytes) {
             renderer.device.queue.writeTexture(
             { texture: this.heightTexture },
@@ -286,7 +299,11 @@ export class NaiveRenderer extends renderer.Renderer {
     }
 
     private initRowInfoIfNeeded() {
+
+        //For writing buffers to textures, byte rows must be multiples of 256
+        //when it's not, we must create a new buffer that is that size and later copy the old buffer into it (with padding)
         if (!this.rowBytes) {
+            
             this.rowBytes = this.heightW * 4;
             const a = 256;
             this.paddedBytesPerRow = Math.ceil(this.rowBytes / a) * a;
@@ -299,10 +316,15 @@ export class NaiveRenderer extends renderer.Renderer {
         }
     }
 
+    /**
+     * Writes the height data array to the height texture
+     * @param heightData The height array
+     */
     private updateHeightInPlace(heightData: Float32Array) {
         const data = new Float32Array(heightData);
         this.initRowInfoIfNeeded();
 
+        //
         if (this.paddedBytesPerRow === this.rowBytes) {
             renderer.device.queue.writeTexture(
                 { texture: this.heightTexture },
@@ -314,6 +336,7 @@ export class NaiveRenderer extends renderer.Renderer {
             const tmp = new Uint8Array(this.uploadScratch!);
             const src = new Uint8Array(heightData.buffer, heightData.byteOffset, heightData.byteLength);
             for (let y = 0; y < this.heightH; y++) {
+                //Copies the non padded buffer to the padded buffer, leaving padding before each row.
                 const s = y * this.rowBytes, d = y * this.paddedBytesPerRow;
                 tmp.set(src.subarray(s, s + this.rowBytes), d);
             }
