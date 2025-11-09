@@ -3,10 +3,12 @@ import { GUI } from 'dat.gui';
 
 import { initWebGPU, Renderer } from './renderer';
 import { NaiveRenderer } from './renderers/naive';
+import { DiffuseRenderer } from './renderers/DiffuseRender';
 
 import { setupLoaders, Scene } from './stage/scene';
 import { Camera } from './stage/camera';
 import { Stage } from './stage/stage';
+
 
 await initWebGPU();
 setupLoaders();
@@ -24,11 +26,17 @@ const gui = new GUI();
 
 const stage = new Stage(scene, camera, stats);
 
+/*
 var renderer: NaiveRenderer | undefined;
 
 renderer?.stop();
 renderer = new NaiveRenderer(stage);
+*/
 
+var renderer: DiffuseRenderer | undefined;
+
+renderer?.stop();
+renderer = new DiffuseRenderer(stage);
 // Height map render
 // Allocate a heightmap (W×H). Each texel is one float (r32float).
 const W=256, H=256;
