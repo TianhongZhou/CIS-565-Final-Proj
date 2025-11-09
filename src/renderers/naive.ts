@@ -54,7 +54,7 @@ export class NaiveRenderer extends renderer.Renderer {
             entries: [
                 {
                     binding: 0,
-                    visibility: GPUShaderStage.VERTEX,
+                    visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
                     buffer: { type: "uniform" }
                 }
             ]
@@ -205,10 +205,28 @@ export class NaiveRenderer extends renderer.Renderer {
             fragment: {
                 module: renderer.device.createShaderModule({ code: shaders.waterFragSrc }),
                 entryPoint: "fs_main",
-                targets: [{ format: renderer.canvasFormat }],
+                targets: [{
+                    format: renderer.canvasFormat,
+                    blend: {
+                        color: {
+                            srcFactor: "src-alpha",
+                            dstFactor: "one-minus-src-alpha",
+                            operation: "add",
+                        },
+                        alpha: {
+                            srcFactor: "one",
+                            dstFactor: "one-minus-src-alpha",
+                            operation: "add",
+                        },
+                    },
+                }],
             },
-            depthStencil: { format: "depth24plus", depthWriteEnabled: true, depthCompare: "less" },
-            primitive: { topology: "triangle-list" }
+            depthStencil: { 
+                format: "depth24plus", 
+                depthWriteEnabled: true, 
+                depthCompare: "less" 
+            },
+            primitive: { topology: "triangle-list"}
         });
     }
 
@@ -406,7 +424,7 @@ export class NaiveRenderer extends renderer.Renderer {
             const s = 0.05, w = this._t;
             for (let y = 0; y < H; y++) {
                 for (let x = 0; x < W; x++) {
-                arr[y*W + x] = Math.sin(x*s + w) * Math.cos(y*s + 0.5*w);
+                arr[y*W + x] = 0.1*Math.sin(x*s + w) * Math.cos(y*s + 0.5*w);
                 }
             }
         }

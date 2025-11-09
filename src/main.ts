@@ -12,7 +12,7 @@ await initWebGPU();
 setupLoaders();
 
 let scene = new Scene();
-//await scene.loadGltf('./scenes/sponza/Sponza.gltf');
+await scene.loadGltf('./scenes/sponza/Sponza.gltf');
 
 const camera = new Camera();
 
@@ -43,7 +43,7 @@ const arr = new Float32Array(W * H);
 // worldScaleXY -> the grid spans [-a,+b] in X and Z (width/depth = 2 units)
 // heightScale  -> amplitude multiplier for heights sampled from the texture
 // baseLevel    -> lifts the whole plane in world Y (0 = centered at origin)
-renderer.setHeightParams(1, 1, 1, 0);
+renderer.setHeightParams(1, 1, 1, 1);
 
 // Initialize GPU height texture and bind groups with the first frame’s data.
 renderer.updateHeight(arr, W, H);
