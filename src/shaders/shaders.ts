@@ -13,6 +13,8 @@ export const constants = {
     bindGroup_scene: 0,
     bindGroup_model: 1,
     bindGroup_material: 2,
+
+    water_base_level: 1.5
 };
 
 // =================================
