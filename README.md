@@ -9,7 +9,9 @@
 ### Progress
 
 - Simulation
-
+    - Implement Simulator class and method functions
+    - Divided simulation into 4 steps
+    - Implemented decomposition
 - Rendering
     - Semi-transparent water rendering with alpha blending
     - Planar reflection on the water surface using a mirrored camera
