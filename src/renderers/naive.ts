@@ -44,7 +44,9 @@ export class NaiveRenderer extends renderer.Renderer {
     private paddedBytesPerRow = 0;
     private uploadScratch: Uint8Array | null = null;
 
-    private heightArray?: Float32Array; 
+    private heightArray!: Float32Array; 
+    private heightArrayB!: Float32Array; 
+    private useA = true;
     private updater?: (dtSec: number, heightIn: Float32Array, heightOut: Float32Array) => void; 
     private _t = 0;
 
@@ -610,6 +612,7 @@ export class NaiveRenderer extends renderer.Renderer {
         }
         if (!this.heightArray) {
             this.heightArray = new Float32Array(this.heightW * this.heightH);
+            this.heightArrayB = new Float32Array(this.heightW * this.heightH);
 
             for (let j = 1; j < this.heightW - 1; ++j) {
                 for (let i = 1; i < this.heightH - 1; ++i) {
@@ -662,24 +665,27 @@ export class NaiveRenderer extends renderer.Renderer {
     protected override onBeforeDraw(dtMs: number): void {
         const dt = dtMs / 1000; 
         this.initRowInfoIfNeeded();
-        const arr = this.heightArray!;
+        const inBuf  = this.useA ? this.heightArray : this.heightArrayB;
+        const outBuf = this.useA ? this.heightArrayB : this.heightArray;
 
         if (this.updater) {
             // External simulation writes into 'arr' (W*H floats)
-            this.updater(dt, arr, arr);
+            this.updater(dt, inBuf, outBuf);
         } else {
             this._t += dt;
             const W = this.heightW, H = this.heightH;
             const s = 0.05, w = this._t;
             for (let y = 0; y < H; y++) {
                 for (let x = 0; x < W; x++) {
-                arr[y*W + x] = 0.1*Math.sin(x*s + w) * Math.cos(y*s + 0.5*w);
+                outBuf[y*W + x] = 0.1*Math.sin(x*s + w) * Math.cos(y*s + 0.5*w);
                 }
             }
         }
 
         // Upload into the existing height texture
-        this.updateHeightInPlace(arr);
+        this.updateHeightInPlace(outBuf);
+
+        this.useA = !this.useA;
     }
 
     private updateReflectionUniforms() {
