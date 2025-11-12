@@ -45,7 +45,7 @@ export class NaiveRenderer extends renderer.Renderer {
     private uploadScratch: Uint8Array | null = null;
 
     private heightArray?: Float32Array; 
-    private updater?: (dtSec: number, out: Float32Array) => void; 
+    private updater?: (dtSec: number, heightIn: Float32Array, heightOut: Float32Array) => void; 
     private _t = 0;
 
     // --- Reflection state (CPU & GPU resources) ---
@@ -588,7 +588,7 @@ export class NaiveRenderer extends renderer.Renderer {
         }
     }
 
-    setHeightUpdater(fn: (dtSec: number, out: Float32Array) => void) {
+    setHeightUpdater(fn: (dtSec: number, heightIn: Float32Array, heightOut: Float32Array) => void) {
         this.updater = fn;
     }
 
@@ -610,6 +610,13 @@ export class NaiveRenderer extends renderer.Renderer {
         }
         if (!this.heightArray) {
             this.heightArray = new Float32Array(this.heightW * this.heightH);
+
+            for (let j = 1; j < this.heightW - 1; ++j) {
+                for (let i = 1; i < this.heightH - 1; ++i) {
+                    const idx = j * this.heightH + i;
+                    this.heightArray[idx] = Math.random();
+                }
+            }
         }
     }
 
@@ -659,7 +666,7 @@ export class NaiveRenderer extends renderer.Renderer {
 
         if (this.updater) {
             // External simulation writes into 'arr' (W*H floats)
-            this.updater(dt, arr);
+            this.updater(dt, arr, arr);
         } else {
             this._t += dt;
             const W = this.heightW, H = this.heightH;

@@ -3,6 +3,7 @@ import { GUI } from 'dat.gui';
 
 import { initWebGPU, Renderer } from './renderer';
 import { NaiveRenderer } from './renderers/naive';
+import { Simulator } from './simulator/simulator';
 
 import { setupLoaders, Scene } from './stage/scene';
 import { Camera } from './stage/camera';
@@ -35,10 +36,12 @@ renderer = new NaiveRenderer(stage);
 const W=256, H=256;
 const arr = new Float32Array(W * H);
 
+let sim = new Simulator(W, H);
+
 // TODO: change simulate(dt, out) to the real simulation function
-// renderer.setHeightUpdater((dt, out) => {
-//   simulate(dt, out);
-// });
+renderer.setHeightUpdater((dt, heightIn, heightOut) => {
+  sim.simulate(dt, heightIn, heightOut);
+});
 
 // Set water-surface parameters:
 // worldScaleXY -> the grid spans [-a,+b] in X and Z (width/depth = 2 units)
