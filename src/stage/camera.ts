@@ -2,7 +2,7 @@ import { Mat4, mat4, Vec3, vec3 } from "wgpu-matrix";
 import { toRadians } from "../math_util";
 import { device, canvas, fovYDegrees, aspectRatio } from "../renderer";
 
-class CameraUniforms {
+export class CameraUniforms {
     readonly buffer = new ArrayBuffer(272);
     private readonly floatView = new Float32Array(this.buffer);
 

@@ -43,6 +43,7 @@ fn vs_main(v: VSIn) -> VSOut {
     hC.baseLevel + h,
     (v.uv.y * 2.0 - 1.0) * hC.worldScaleXY.y
   );
+  var clipPos = camera.viewProjMat * vec4<f32>(world, 1.0);
 
   // Central differences in texture space to estimate slope
   // Step size in UV is exactly one texel in each axis
@@ -63,7 +64,7 @@ fn vs_main(v: VSIn) -> VSOut {
 
   // Pack outputs
   var o : VSOut;
-  o.clip     = camera.viewProjMat * vec4<f32>(world, 1.0);
+  o.clip     = clipPos;
   o.worldPos = world;
   o.normal   = n;
   o.uv       = v.uv;

@@ -7,12 +7,13 @@ import { NaiveRenderer } from './renderers/naive';
 import { setupLoaders, Scene } from './stage/scene';
 import { Camera } from './stage/camera';
 import { Stage } from './stage/stage';
+import { constants } from './shaders/shaders';
 
 await initWebGPU();
 setupLoaders();
 
 let scene = new Scene();
-//await scene.loadGltf('./scenes/sponza/Sponza.gltf');
+await scene.loadGltf('./scenes/sponza/Sponza.gltf');
 
 const camera = new Camera();
 
@@ -43,7 +44,7 @@ const arr = new Float32Array(W * H);
 // worldScaleXY -> the grid spans [-a,+b] in X and Z (width/depth = 2 units)
 // heightScale  -> amplitude multiplier for heights sampled from the texture
 // baseLevel    -> lifts the whole plane in world Y (0 = centered at origin)
-renderer.setHeightParams(1, 1, 1, 0);
+renderer.setHeightParams(5, 2, 1, constants.water_base_level);
 
 // Initialize GPU height texture and bind groups with the first frame’s data.
 renderer.updateHeight(arr, W, H);
