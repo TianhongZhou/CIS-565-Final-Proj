@@ -20,6 +20,10 @@ export class DiffuseRenderer extends renderer.Renderer {
     lowFreqWaveTexture: GPUTexture;
     highFreqWaveTexture: GPUTexture;
     heightTerrainTexture: GPUTexture;
+
+    lowFreqWaveTextureOut: GPUTexture;
+    highFreqWaveTextureOut: GPUTexture;
+    
     
     // non-filtering sampler
     heightSampler: GPUSampler;
@@ -36,12 +40,23 @@ export class DiffuseRenderer extends renderer.Renderer {
     // pipeline that draws the displaced grid (water surface)
     heightPipeline: GPURenderPipeline;
 
+    
     // vertex buffer storing per-vertex UVs
     heightVBO: GPUBuffer;
     // index buffer for the grid
     heightIBO: GPUBuffer;
     // how many indices to draw
     heightIndexCount = 0;
+
+
+    // Compute shader resources
+    diffusionComputePipeline: GPUComputePipeline;
+    diffusionLowHighFreqComputeBindGroupLayout: GPUBindGroupLayout; //Ping pong low/high freq
+    diffusionConstantsComputeBindGroupLayout: GPUBindGroupLayout; 
+    diffusionFreqInputComputeBindGroup: GPUBindGroup;
+    diffusionFreqOutputComputeBindGroup: GPUBindGroup;
+    diffusionConstantsComputeBindGroup: GPUBindGroup;
+    
 
     // --- Upload helpers for writeTexture() row alignment ---
     private rowBytes = 0;
@@ -147,19 +162,31 @@ export class DiffuseRenderer extends renderer.Renderer {
         this.lowFreqWaveTexture = renderer.device.createTexture({
             size: [256, 256], 
             format: "r32float",
-            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.STORAGE_BINDING,
         });
 
         this.highFreqWaveTexture = renderer.device.createTexture({
             size: [256, 256], 
             format: "r32float",
-            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.STORAGE_BINDING,
         });
 
         this.heightTerrainTexture = renderer.device.createTexture({
             size: [256, 256], 
             format: "r32float",
-            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.STORAGE_BINDING,
+        });
+
+        this.lowFreqWaveTextureOut = renderer.device.createTexture({
+            size: [256, 256], 
+            format: "r32float",
+            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_DST,
+        });
+
+        this.highFreqWaveTextureOut = renderer.device.createTexture({
+            size: [256, 256],
+            format: "r32float",
+            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_DST,
         });
 
         // Non-filtering sampler (required for unfilterable formats like R32Float).
@@ -204,11 +231,11 @@ export class DiffuseRenderer extends renderer.Renderer {
             layout: this.heightBindGroupLayout,
             entries: [
                 { binding: 0, resource: this.heightSampler },
-                { binding: 1, resource: this.lowFreqWaveTexture.createView() },
+                { binding: 1, resource: this.lowFreqWaveTextureOut.createView() },
                 { binding: 2, resource: { buffer: this.heightConsts } },
             ]
         });
-
+        
         this.highFrequencyBindGroup = renderer.device.createBindGroup({
             layout: this.heightBindGroupLayout,
             entries: [
@@ -252,6 +279,126 @@ export class DiffuseRenderer extends renderer.Renderer {
             depthStencil: { format: "depth24plus", depthWriteEnabled: true, depthCompare: "less" },
             primitive: { topology: "triangle-list" }
         });
+
+        //Compute shader setup
+
+        this.diffusionLowHighFreqComputeBindGroupLayout = renderer.device.createBindGroupLayout({
+            label: "diffusion low/high freq compute bind group layout",
+            entries: [
+                { binding: 0, visibility: GPUShaderStage.COMPUTE, storageTexture: {format: "r32float", access: "read-write", viewDimension: "2d"} },
+                //{ binding: 1, visibility: GPUShaderStage.COMPUTE, storageTexture: {format: "r32float", access: "read-write", viewDimension: "2d"} }
+            ]
+        });
+
+        this.diffusionConstantsComputeBindGroupLayout = renderer.device.createBindGroupLayout({
+            label: "diffusion constants compute bind group layout",
+            entries: [
+                { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
+                { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
+                { binding: 2, visibility: GPUShaderStage.COMPUTE, storageTexture: {format: "r32float", access: "read-write", viewDimension: "2d"} },
+                { binding: 3, visibility: GPUShaderStage.COMPUTE, storageTexture: {format: "r32float", access: "read-only", viewDimension: "2d"} }
+            ]
+        });
+
+        this.diffusionFreqInputComputeBindGroup = renderer.device.createBindGroup({
+            layout: this.diffusionLowHighFreqComputeBindGroupLayout,
+            entries: [
+                { binding: 0, resource: this.lowFreqWaveTexture.createView() },
+                //{ binding: 1, resource: this.highFreqWaveTexture.createView() }
+            ]
+        });
+        this.diffusionFreqOutputComputeBindGroup = renderer.device.createBindGroup({
+            layout: this.diffusionLowHighFreqComputeBindGroupLayout,
+            entries: [
+                { binding: 0, resource: this.lowFreqWaveTextureOut.createView() },
+                //{ binding: 1, resource: this.highFreqWaveTextureOut.createView() }
+            ]
+        });
+
+        const timeStepBuffer = renderer.device.createBuffer({
+            size: 4,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+        });
+        const gridScaleBuffer = renderer.device.createBuffer({
+            size: 4,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+        });
+        renderer.device.queue.writeBuffer(timeStepBuffer, 0, Float32Array.from([0.016])); //Currently defaulting the time step to 16ms
+        renderer.device.queue.writeBuffer(gridScaleBuffer, 0, Float32Array.from([1.0]));
+        this.diffusionConstantsComputeBindGroup = renderer.device.createBindGroup({
+            label: "diffusion constants compute bind group",
+            layout: this.diffusionConstantsComputeBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: timeStepBuffer } },
+                { binding: 1, resource: { buffer: gridScaleBuffer } },
+                { binding: 2, resource: this.highFreqWaveTexture.createView() },
+                { binding: 3, resource: this.heightTerrainTexture.createView() }
+            ]
+        });
+        
+        this.diffusionComputePipeline = renderer.device.createComputePipeline({
+            label: "diffusion compute pipeline",
+            layout: renderer.device.createPipelineLayout({
+                bindGroupLayouts: [
+                    this.diffusionLowHighFreqComputeBindGroupLayout,
+                    this.diffusionLowHighFreqComputeBindGroupLayout,
+                    this.diffusionConstantsComputeBindGroupLayout
+                ]
+            }),
+            compute: {
+                module: renderer.device.createShaderModule({
+                    label: "diffuse compute shader",
+                    code: shaders.diffuseComputeSrc
+                }),
+                entryPoint: "diffuse"
+            }
+        });
+        this.setHeightParams(1, 1, 1, 0);
+        //Set initial values of textures
+        const dt = 0 / 1000; 
+        this.initRowInfoIfNeeded();
+        const terrainArr = this.terrainArray!;
+        const lowFreqArr = this.lowFrequencyArray!;
+        const highFreqArr = this.highFrequencyArray!;
+
+
+        if (this.updater) {
+            // External simulation writes into 'arr' (W*H floats)
+            this.updater(dt, terrainArr);
+        } else {
+            this._t += dt;
+            const W = this.heightW, H = this.heightH;
+            const s = 0.05, w = this._t;
+            for (let y = 0; y < H; y++) {
+                for (let x = 0; x < W; x++) {
+                terrainArr[y*W + x] = Math.sin(x*s + w) * Math.cos(y*s + 0.5*w);
+                lowFreqArr[y*W + x] = terrainArr[y*W + x] + 3;
+                highFreqArr[y*W + x] = terrainArr[y*W + x] + 0;
+                }
+            }
+        }
+
+        // Upload into the existing height texture
+        //this.updateHeightInPlace(arr);
+        
+        this.updateTexture(terrainArr, this.heightTerrainTexture);
+        this.updateTexture(lowFreqArr, this.lowFreqWaveTexture);
+        this.updateTexture(highFreqArr, this.highFreqWaveTexture);
+        this.updateTexture(lowFreqArr, this.lowFreqWaveTextureOut);
+        //TODO: run compute shader 128 times, ping ponging between the two sets of textures for the low/high frequency waves
+        
+        const encoder = renderer.device.createCommandEncoder();
+        const pass = encoder.beginComputePass();
+        pass.setPipeline(this.diffusionComputePipeline);
+        pass.setBindGroup(0, this.diffusionFreqInputComputeBindGroup);
+        pass.setBindGroup(1, this.diffusionFreqOutputComputeBindGroup);
+        pass.setBindGroup(2, this.diffusionConstantsComputeBindGroup);
+        pass.dispatchWorkgroups(Math.ceil(this.heightW / shaders.constants.threadsInDiffusionBlockX), Math.ceil(this.heightH / shaders.constants.threadsInDiffusionBlockY));
+        pass.end();
+
+        renderer.device.queue.submit([encoder.finish()]);
+
+
     }
 
     override draw() {
@@ -292,18 +439,21 @@ export class DiffuseRenderer extends renderer.Renderer {
         // Add pipeline for height map in render pass
         renderPass.setPipeline(this.heightPipeline);
         renderPass.setBindGroup(0, this.sceneUniformsBindGroup);
-        renderPass.setBindGroup(1, this.terrainBindGroup); //Terrain
+       
         renderPass.setVertexBuffer(0, this.heightVBO);
         renderPass.setIndexBuffer(this.heightIBO, "uint32");
-        renderPass.drawIndexed(this.heightIndexCount);
 
+        /*
+        renderPass.setBindGroup(1, this.terrainBindGroup); //Terrain
+        renderPass.drawIndexed(this.heightIndexCount);
+        */
         
         renderPass.setBindGroup(1, this.lowFrequencyBindGroup); //Low Frequency waves
         renderPass.drawIndexed(this.heightIndexCount);
-
+        /*
         renderPass.setBindGroup(1, this.highFrequencyBindGroup); //High Frequency waves
         renderPass.drawIndexed(this.heightIndexCount);
-        
+        */
         renderPass.end();
 
         renderer.device.queue.submit([encoder.finish()]);
@@ -316,150 +466,6 @@ export class DiffuseRenderer extends renderer.Renderer {
         renderer.device.queue.writeBuffer(this.heightConsts, 16, new Float32Array([heightScale]));
         renderer.device.queue.writeBuffer(this.heightConsts, 20, new Float32Array([baseLevel]));
     }
-
-    // Initialize (or resize) the height texture and update dependent state.
-    // Also uploads the given height data for the current frame.
-    // NOTE: Does not currently work correctly for diffuse render, but frankly doesn't matter right now.
-    updateHeight(heightData: Float32Array, w: number, h: number) {
-        const data = new Float32Array(heightData);
-
-        const sizeChanged = (w !== this.heightW) || (h !== this.heightH);
-
-        //If the size has changed, the texture size will change, so we need to recreate the texture and update the bind group layout it's in
-        if (sizeChanged) {
-            this.heightW = w; this.heightH = h;
-
-            this.heightTerrainTexture = renderer.device.createTexture({
-            size: [w, h],
-            format: "r32float",
-            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
-            });
-
-            this.lowFreqWaveTexture = renderer.device.createTexture({
-            size: [w, h],
-            format: "r32float",
-            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
-            });
-
-            this.highFreqWaveTexture = renderer.device.createTexture({
-            size: [w, h],
-            format: "r32float",
-            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
-            });
-
-            // Update uvTexel = (1/w, 1/h) in the UBO
-            renderer.device.queue.writeBuffer(this.heightConsts, 0, new Float32Array([1/w, 1/h]));
-            
-            // Recreate the bind group because the texture view changed
-            this.terrainBindGroup = renderer.device.createBindGroup({
-            layout: this.heightBindGroupLayout,
-            entries: [
-                { binding: 0, resource: this.heightSampler },
-                { binding: 1, resource: this.heightTerrainTexture.createView() },
-                { binding: 2, resource: { buffer: this.heightConsts } },
-            ],
-            });
-
-            this.lowFrequencyBindGroup = renderer.device.createBindGroup({
-            layout: this.heightBindGroupLayout,
-            entries: [
-                { binding: 0, resource: this.heightSampler },
-                { binding: 1, resource: this.lowFreqWaveTexture.createView() },
-                { binding: 2, resource: { buffer: this.heightConsts } },
-            ],
-            });
-
-            this.highFrequencyBindGroup = renderer.device.createBindGroup({
-            layout: this.heightBindGroupLayout,
-            entries: [
-                { binding: 0, resource: this.heightSampler },
-                { binding: 1, resource: this.highFreqWaveTexture.createView() },
-                { binding: 2, resource: { buffer: this.heightConsts } },
-            ],
-            });
-        }
-
-        // Upload the data (handles 256-byte row alignment as needed)
-        
-        const rowBytes = w * 4;
-        const align = 256;
-        const padded = Math.ceil(rowBytes / align) * align;
-
-        /*
-        //Terrain
-        if (padded === rowBytes) {
-            // Direct upload when already aligned
-            renderer.device.queue.writeTexture(
-                { texture: this.heightTerrainTexture },
-                data,
-                { bytesPerRow: rowBytes },
-                [w, h, 1]
-            );
-        } else {
-            // Row-padded upload path
-            const tmp = new Uint8Array(padded * h);
-            const src = new Uint8Array(heightData.buffer, heightData.byteOffset, heightData.byteLength);
-            for (let y = 0; y < h; y++) {
-                tmp.set(src.subarray(y*rowBytes, y*rowBytes + rowBytes), y*padded);
-            }
-            renderer.device.queue.writeTexture(
-                { texture: this.heightTerrainTexture },
-                tmp,
-                { bytesPerRow: padded },
-                [w, h, 1]
-            );
-        }
-        //LowFreq
-        if (padded === rowBytes) {
-            // Direct upload when already aligned
-            renderer.device.queue.writeTexture(
-                { texture: this.lowFreqWaveTexture },
-                data,
-                { bytesPerRow: rowBytes },
-                [w, h, 1]
-            );
-        } else {
-            // Row-padded upload path
-            const tmp = new Uint8Array(padded * h);
-            const src = new Uint8Array(heightData.buffer, heightData.byteOffset, heightData.byteLength);
-            for (let y = 0; y < h; y++) {
-                tmp.set(src.subarray(y*rowBytes, y*rowBytes + rowBytes), y*padded);
-            }
-            renderer.device.queue.writeTexture(
-                { texture: this.lowFreqWaveTexture },
-                tmp,
-                { bytesPerRow: padded },
-                [w, h, 1]
-            );
-        }
-        //HighFreq
-        if (padded === rowBytes) {
-            // Direct upload when already aligned
-            renderer.device.queue.writeTexture(
-                { texture: this.highFreqWaveTexture },
-                data,
-                { bytesPerRow: rowBytes },
-                [w, h, 1]
-            );
-        } else {
-            // Row-padded upload path
-            const tmp = new Uint8Array(padded * h);
-            const src = new Uint8Array(heightData.buffer, heightData.byteOffset, heightData.byteLength);
-            for (let y = 0; y < h; y++) {
-                tmp.set(src.subarray(y*rowBytes, y*rowBytes + rowBytes), y*padded);
-            }
-            renderer.device.queue.writeTexture(
-                { texture: this.highFreqWaveTexture },
-                tmp,
-                { bytesPerRow: padded },
-                [w, h, 1]
-            );
-        }
-        */
-        
-        
-    }
-
     setHeightUpdater(fn: (dtSec: number, out: Float32Array) => void) {
         this.updater = fn;
     }
@@ -491,43 +497,6 @@ export class DiffuseRenderer extends renderer.Renderer {
         }
     }
 
-    /**
-     * Writes the height data array to the height texture
-     * @param heightData The height array
-     */
-    // Fast path: upload a W×H Float32Array into the existing height texture.
-    // Avoids re-creating textures/bind groups; handles 256-byte row alignment.
-    /*
-    private updateHeightInPlace(heightData: Float32Array) {
-        const data = new Float32Array(heightData);
-        this.initRowInfoIfNeeded();
-
-        // Aligned -> upload directly
-        if (this.paddedBytesPerRow === this.rowBytes) {
-            renderer.device.queue.writeTexture(
-                { texture: this.heightTexture },
-                data,
-                { bytesPerRow: this.rowBytes },
-                [this.heightW, this.heightH, 1]
-            );
-        } else {
-            // Not aligned -> copy row-by-row into the padded scratch buffer
-            const tmp = new Uint8Array(this.uploadScratch!);
-            const src = new Uint8Array(heightData.buffer, heightData.byteOffset, heightData.byteLength);
-            for (let y = 0; y < this.heightH; y++) {
-                //Copies the non padded buffer to the padded buffer, leaving padding before each row.
-                const s = y * this.rowBytes, d = y * this.paddedBytesPerRow;
-                tmp.set(src.subarray(s, s + this.rowBytes), d);
-            }
-            renderer.device.queue.writeTexture(
-                { texture: this.heightTexture },
-                tmp,
-                { bytesPerRow: this.paddedBytesPerRow },
-                [this.heightW, this.heightH, 1]
-            );
-        }
-    }
-    */
     private updateTexture(heightData: Float32Array, heightTexture: GPUTexture)
     {
         const data = new Float32Array(heightData);
@@ -564,6 +533,7 @@ export class DiffuseRenderer extends renderer.Renderer {
     // simulation callback (setHeightUpdater) or with a demo wave when no callback is set.
     // Then uploads the new height field into the GPU texture.
     protected override onBeforeDraw(dtMs: number): void {
+        /*
         const dt = dtMs / 1000; 
         this.initRowInfoIfNeeded();
         const terrainArr = this.terrainArray!;
@@ -592,6 +562,7 @@ export class DiffuseRenderer extends renderer.Renderer {
         this.updateTexture(terrainArr, this.heightTerrainTexture);
         this.updateTexture(lowFreqArr, this.lowFreqWaveTexture);
         this.updateTexture(highFreqArr, this.highFreqWaveTexture);
+        */
     }
 }
 

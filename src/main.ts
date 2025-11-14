@@ -54,4 +54,4 @@ const arr = new Float32Array(W * H);
 renderer.setHeightParams(1, 1, 1, 0);
 
 // Initialize GPU height texture and bind groups with the first frame’s data.
-renderer.updateHeight(arr, W, H);
+//renderer.updateHeight(arr, W, H);
