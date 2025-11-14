@@ -17,7 +17,8 @@ export const constants = {
     bindGroup_model: 1,
     bindGroup_material: 2,
     threadsInDiffusionBlockX: 16,
-    threadsInDiffusionBlockY: 16
+    threadsInDiffusionBlockY: 16,
+    water_base_level: 0
 };
 
 // =================================
