@@ -1,43 +1,53 @@
 struct Heights {
-    lowFreq: f32,
-    highFreq: f32,
+    height: f32,
     terrain: f32,
     totalHeight: f32
 }
 
 
 
-
+/*
 // Ping ponged inputs and outputs (note that they have the terrain height added to them for rendering purposes right now)
 @group(0) @binding(0) var lowFreqHeightIn: texture_storage_2d<r32float, read_write>;
-//Commented out since we can only load 4 storage textures at a time per compute shader
+
 //@group(0) @binding(1) var highFreqHeightIn: texture_storage_2d<r32float, read_write>; 
 
 @group(1) @binding(0) var lowFreqHeightOut: texture_storage_2d<r32float, read_write>;
+//Commented out since we can only load 4 storage textures at a time per compute shader
 //@group(1) @binding(1) var highFreqHeightOut: texture_storage_2d<r32float, read_write>;
 
-@group(2) @binding(0) var<uniform> timeStep: f32;
-@group(2) @binding(1) var<uniform> gridScale: f32;
-@group(2) @binding(2) var highFreqHeightIn: texture_storage_2d<r32float, read_write>;
-@group(2) @binding(3) var terrainHeightIn: texture_storage_2d<r32float, read>;
+@group(2) @binding(0) var highFreqHeightIn: texture_storage_2d<r32float, read_write>;
+
+
+@group(3) @binding(0) var<uniform> timeStep: f32;
+@group(3) @binding(1) var<uniform> gridScale: f32;
+
+@group(3) @binding(2) var terrainHeightIn: texture_storage_2d<r32float, read>;
+*/
+
+
+@group(0) @binding(0) var heightIn: texture_storage_2d<r32float, read_write>;
+@group(1) @binding(0) var lowFreqOut: texture_storage_2d<r32float, read_write>;
+@group(2) @binding(0) var highFreqOut: texture_storage_2d<r32float, read_write>;
+
+@group(3) @binding(0) var<uniform> timeStep: f32;
+@group(3) @binding(1) var<uniform> gridScale: f32;
+@group(3) @binding(2) var terrainHeightIn: texture_storage_2d<r32float, read>;
 
 fn calculateHeights(pos: vec2u) -> Heights {
     var heights: Heights; 
-    let size = textureDimensions(lowFreqHeightIn);
+    let size = textureDimensions(heightIn);
     if(pos.x >= size.x || pos.y >= size.y || pos.x < 0 || pos.y < 0) {
-        heights.lowFreq = 0;
-        heights.highFreq = 0;
+        heights.height = 0;
         heights.terrain = 0;
         heights.totalHeight = 0;
        
     }
     else
     {
-        heights.terrain = textureLoad(terrainHeightIn, pos).x;
-        heights.lowFreq = textureLoad(lowFreqHeightIn, pos).x - heights.terrain;
-        heights.highFreq = textureLoad(highFreqHeightIn, pos).x - heights.terrain;
-        
-        heights.totalHeight = heights.lowFreq + heights.highFreq + heights.terrain;
+       heights.height = textureLoad(heightIn, vec2u(pos.x, pos.y)).x;
+       heights.terrain = textureLoad(terrainHeightIn, vec2u(pos.x, pos.y)).x;
+       heights.totalHeight = heights.height + heights.terrain;
     }
     return heights;
     
@@ -46,7 +56,7 @@ fn calculateHeights(pos: vec2u) -> Heights {
 
 fn calculateAlpha(pos: vec3u, height: f32, deltaHeight: f32) -> f32 {
     var alpha: f32;
-    let size = textureDimensions(lowFreqHeightIn);
+    let size = textureDimensions(heightIn);
     if(pos.x >= size.x || pos.y >= size.y || pos.x < 0 || pos.y < 0) {
         alpha = 0.0;
        
@@ -55,6 +65,7 @@ fn calculateAlpha(pos: vec3u, height: f32, deltaHeight: f32) -> f32 {
         let e = 2.718281828459045;
         let d = 0.01;
         alpha = (height * height) / 64.0 * pow(e, -d * deltaHeight * deltaHeight);
+        //alpha = (height * height) / 64.0;
     }
     return alpha;
 }
@@ -63,7 +74,7 @@ fn calculateAlpha(pos: vec3u, height: f32, deltaHeight: f32) -> f32 {
 @workgroup_size(${threadsInDiffusionBlockX}, ${threadsInDiffusionBlockY}, 1)
 fn diffuse(@builtin(global_invocation_id) globalIdx: vec3u) {
 
-    let size = textureDimensions(lowFreqHeightIn);
+    let size = textureDimensions(heightIn);
     if(globalIdx.x >= size.x || globalIdx.y >= size.y) {
         return;
     }
@@ -96,14 +107,15 @@ fn diffuse(@builtin(global_invocation_id) globalIdx: vec3u) {
 
     let diffusedHeight = heightsCenter.totalHeight + timeStep * (xAlpha * finiteDifferenceHeightX + yAlpha * finiteDifferenceHeightY);
 
-    
+    //Currently adds the terrain height for rendering purposes
+    let lowFreq = diffusedHeight - heightsCenter.terrain;
+    let highFreq = lowFreq - heightsCenter.height;
 
-    //lowFreqHeight - terrainHeight (+ terrainHeight)
-    textureStore(lowFreqHeightOut, vec2u(globalIdx.x, globalIdx.y), vec4f(diffusedHeight, 0, 0, 0));
-
     
-    //height - (lowFreqHeight - terrainHeight) (+ terrainHeight)
-    //textureStore(highFreqHeightOut, vec2u(globalIdx.x, globalIdx.y), vec4f((heightsCenter.lowFreq + heightsCenter.highFreq) - diffusedHeight, 0, 0, 0));
+    textureStore(lowFreqOut, vec2u(globalIdx.x, globalIdx.y), vec4f(lowFreq, 0, 0, 0));
+    textureStore(highFreqOut, vec2u(globalIdx.x, globalIdx.y), vec4f(highFreq, 0, 0, 0));
+    
+    
     /*
     let highFreqHeight = textureLoad(highFreqHeightIn, vec2u(globalIdx.x, globalIdx.y)).x;
     textureStore(lowFreqHeightOut, vec2u(globalIdx.x, globalIdx.y), vec4f(highFreqHeight, 0, 0, 0));

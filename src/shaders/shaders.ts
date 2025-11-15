@@ -9,7 +9,7 @@ import waterVertRaw from './water.vs.wgsl?raw';
 import waterFragRaw from './water.fs.wgsl?raw';
 
 import diffuseComputeRaw from './diffuse.cs.wgsl?raw';
-
+import reconstructHeightRaw from './reconstructHeight.wgsl?raw';
 
 // CONSTANTS (for use in shaders)
 export const constants = {
@@ -42,3 +42,4 @@ export const waterVertSrc: string = processShaderRaw(waterVertRaw);
 export const waterFragSrc: string = processShaderRaw(waterFragRaw);
 
 export const diffuseComputeSrc: string = processShaderRaw(diffuseComputeRaw);
+export const reconstructHeightSrc: string = processShaderRaw(reconstructHeightRaw);
