@@ -468,7 +468,7 @@ export class DiffuseRenderer extends renderer.Renderer {
         //this.updateTexture(lowFreqArr, this.highFreqWaveTexture);
         //ImportantPart: runs the diffusion compute shader. Current set to 1 to demonstrate seperation, set it to 128 for diffusion. You can also set it to 1280 to see more obvious diffusion.
         const encoder = renderer.device.createCommandEncoder();
-        for(let i = 0; i < 1280; i++) {
+        for(let i = 0; i < 1; i++) {
         
             const diffusePass = encoder.beginComputePass();
             diffusePass.setPipeline(this.diffusionComputePipeline);
