@@ -25,6 +25,8 @@ export class Simulator {
 
 
   simulate(dt: GLfloat) {
+
+    //Run this 128 times, making sure to clamp dt to 0.25
     this.diffuse.step(dt);
 
     // for (let j = 1; j < this.W - 1; ++j) {

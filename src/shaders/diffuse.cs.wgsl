@@ -5,27 +5,6 @@ struct Heights {
 }
 
 
-
-/*
-// Ping ponged inputs and outputs (note that they have the terrain height added to them for rendering purposes right now)
-@group(0) @binding(0) var lowFreqHeightIn: texture_storage_2d<r32float, read_write>;
-
-//@group(0) @binding(1) var highFreqHeightIn: texture_storage_2d<r32float, read_write>; 
-
-@group(1) @binding(0) var lowFreqHeightOut: texture_storage_2d<r32float, read_write>;
-//Commented out since we can only load 4 storage textures at a time per compute shader
-//@group(1) @binding(1) var highFreqHeightOut: texture_storage_2d<r32float, read_write>;
-
-@group(2) @binding(0) var highFreqHeightIn: texture_storage_2d<r32float, read_write>;
-
-
-@group(3) @binding(0) var<uniform> timeStep: f32;
-@group(3) @binding(1) var<uniform> gridScale: f32;
-
-@group(3) @binding(2) var terrainHeightIn: texture_storage_2d<r32float, read>;
-*/
-
-
 @group(0) @binding(0) var heightIn: texture_storage_2d<r32float, read_write>;
 @group(1) @binding(0) var lowFreqOut: texture_storage_2d<r32float, read_write>;
 @group(2) @binding(0) var highFreqOut: texture_storage_2d<r32float, read_write>;
@@ -94,6 +73,7 @@ fn diffuse(@builtin(global_invocation_id) globalIdx: vec3u) {
     heightsDown = calculateHeights(vec2u(globalIdx.x, globalIdx.y) - vec2u(0, 1));
 
     //Right side of diffusion Equation
+    //Note: If grid is now square, this will need to be updated
     var finiteDifferenceHeightX = (heightsRight.totalHeight + heightsLeft.totalHeight - 2.0 * heightsCenter.totalHeight) / (gridScale * gridScale);
     var finiteDifferenceHeightY = (heightsUp.totalHeight + heightsDown.totalHeight - 2.0 * heightsCenter.totalHeight) / (gridScale * gridScale);
 
@@ -107,7 +87,6 @@ fn diffuse(@builtin(global_invocation_id) globalIdx: vec3u) {
 
     let diffusedHeight = heightsCenter.totalHeight + timeStep * (xAlpha * finiteDifferenceHeightX + yAlpha * finiteDifferenceHeightY);
 
-    //Currently adds the terrain height for rendering purposes
     let lowFreq = diffusedHeight - heightsCenter.terrain;
     let highFreq = lowFreq - heightsCenter.height;
 
@@ -115,9 +94,5 @@ fn diffuse(@builtin(global_invocation_id) globalIdx: vec3u) {
     textureStore(lowFreqOut, vec2u(globalIdx.x, globalIdx.y), vec4f(lowFreq, 0, 0, 0));
     textureStore(highFreqOut, vec2u(globalIdx.x, globalIdx.y), vec4f(highFreq, 0, 0, 0));
     
-    
-    /*
-    let highFreqHeight = textureLoad(highFreqHeightIn, vec2u(globalIdx.x, globalIdx.y)).x;
-    textureStore(lowFreqHeightOut, vec2u(globalIdx.x, globalIdx.y), vec4f(highFreqHeight, 0, 0, 0));
-    */
+
 }
