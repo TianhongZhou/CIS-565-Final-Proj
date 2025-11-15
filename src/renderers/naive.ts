@@ -1,8 +1,10 @@
 import * as renderer from '../renderer';
 import * as shaders from '../shaders/shaders';
 import { Stage } from '../stage/stage';
-import { Mat4, mat4, Vec3, vec3 } from "wgpu-matrix";
+import { mat4, vec3 } from "wgpu-matrix";
 import { Camera, CameraUniforms } from '../stage/camera';
+import { DiffuseCS } from '../simulator/Diffuse';
+import { Simulator } from '../simulator/simulator';
 
 export class NaiveRenderer extends renderer.Renderer {
     sceneUniformsBindGroupLayout: GPUBindGroupLayout;
@@ -20,6 +22,9 @@ export class NaiveRenderer extends renderer.Renderer {
 
     // R32Float texture storing heights (1 float per texel)
     heightTexture: GPUTexture;
+    terrainTexture: GPUTexture;
+    lowFreqInTexture: GPUTexture;
+    highFreqTexture: GPUTexture;
     // non-filtering sampler
     heightSampler: GPUSampler;
     // UBO for HeightConsts (uvTexel, worldScale, heightScale, baseLevel)
@@ -44,11 +49,9 @@ export class NaiveRenderer extends renderer.Renderer {
     private paddedBytesPerRow = 0;
     private uploadScratch: Uint8Array | null = null;
 
-    private heightArray!: Float32Array; 
-    private heightArrayB!: Float32Array; 
-    private useA = true;
-    private updater?: (dtSec: number, heightIn: Float32Array, heightOut: Float32Array) => void; 
-    private _t = 0;
+    // Diffuse compute
+    private diffuse: DiffuseCS;
+    private simulator: Simulator;
 
     // --- Reflection state (CPU & GPU resources) ---
     // Color texture where we render the mirrored scene (used later by water shader)
@@ -225,11 +228,38 @@ export class NaiveRenderer extends renderer.Renderer {
             renderer.device.queue.writeBuffer(this.heightIBO, 0, grid.indices);
         }
 
+        const texUsage =
+            GPUTextureUsage.TEXTURE_BINDING |
+            GPUTextureUsage.COPY_DST |
+            GPUTextureUsage.COPY_SRC |
+            GPUTextureUsage.STORAGE_BINDING;
+
         // R32Float height texture (unfilterable). One float per texel.
         this.heightTexture = renderer.device.createTexture({
-            size: [256, 256], 
+            size: [this.heightW, this.heightH],
             format: "r32float",
-            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+            usage: texUsage,
+        });
+
+        // lowFreq IN
+        this.lowFreqInTexture = renderer.device.createTexture({
+            size: [this.heightW, this.heightH],
+            format: "r32float",
+            usage: texUsage,
+        });
+
+        // highFreq
+        this.highFreqTexture = renderer.device.createTexture({
+            size: [this.heightW, this.heightH],
+            format: "r32float",
+            usage: texUsage,
+        });
+
+        // terrain
+        this.terrainTexture = renderer.device.createTexture({
+            size: [this.heightW, this.heightH],
+            format: "r32float",
+            usage: texUsage,
         });
 
         // Non-filtering sampler (required for unfilterable formats like R32Float).
@@ -420,6 +450,49 @@ export class NaiveRenderer extends renderer.Renderer {
             },
             primitive: { topology: "triangle-list"}
         });
+
+        // --- Diffuse step ---
+        this.initRowInfoIfNeeded();
+
+        const terrainArr = new Float32Array(this.heightW * this.heightH);
+        const lowArr = new Float32Array(this.heightW * this.heightH);
+        const highArr = new Float32Array(this.heightW * this.heightH);
+
+        let t = 0;
+        const s = 0.05;
+        const Wtex = this.heightW;
+        const Htex = this.heightH;
+
+        for (let y = 0; y < Htex; y++) {
+            for (let x = 0; x < Wtex; x++) {
+                const idx = y * Wtex + x;
+                const base = Math.sin(x * s + t) * Math.cos(y * s + 0.5 * t);
+                terrainArr[idx] = base;
+                lowArr[idx] = base + 3.0;
+                highArr[idx] = base + 0.0;
+            }
+        }
+
+        this.updateTexture(terrainArr, this.terrainTexture);
+        this.updateTexture(lowArr, this.heightTexture);  
+        this.updateTexture(lowArr, this.lowFreqInTexture);
+        this.updateTexture(highArr, this.highFreqTexture);
+
+        this.diffuse = new DiffuseCS(
+            renderer.device,
+            this.heightW,
+            this.heightH,
+            this.lowFreqInTexture,
+            this.heightTexture,
+            this.highFreqTexture,
+            this.terrainTexture
+        );
+
+        this.simulator = new Simulator(
+            this.heightW,
+            this.heightH,
+            this.diffuse
+        );
     }
 
     override draw() {
@@ -530,70 +603,6 @@ export class NaiveRenderer extends renderer.Renderer {
         this.waterBaseLevel = baseLevel;
     }
 
-    // Initialize (or resize) the height texture and update dependent state.
-    // Also uploads the given height data for the current frame.
-    updateHeight(heightData: Float32Array, w: number, h: number) {
-        const data = new Float32Array(heightData);
-
-        const sizeChanged = (w !== this.heightW) || (h !== this.heightH);
-
-        //If the size has changed, the texture size will change, so we need to recreate the texture and update the bind group layout it's in
-        if (sizeChanged) {
-            this.heightW = w; this.heightH = h;
-
-            this.heightTexture = renderer.device.createTexture({
-            size: [w, h],
-            format: "r32float",
-            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
-            });
-
-            // Update uvTexel = (1/w, 1/h) in the UBO
-            renderer.device.queue.writeBuffer(this.heightConsts, 0, new Float32Array([1/w, 1/h]));
-            
-            // Recreate the bind group because the texture view changed
-            this.heightBindGroup = renderer.device.createBindGroup({
-            layout: this.heightBindGroupLayout,
-            entries: [
-                { binding: 0, resource: this.heightSampler },
-                { binding: 1, resource: this.heightTexture.createView() },
-                { binding: 2, resource: { buffer: this.heightConsts } },
-            ],
-            });
-        }
-
-        // Upload the data (handles 256-byte row alignment as needed)
-        const rowBytes = w * 4;
-        const align = 256;
-        const padded = Math.ceil(rowBytes / align) * align;
-
-        if (padded === rowBytes) {
-            // Direct upload when already aligned
-            renderer.device.queue.writeTexture(
-                { texture: this.heightTexture },
-                data,
-                { bytesPerRow: rowBytes },
-                [w, h, 1]
-            );
-        } else {
-            // Row-padded upload path
-            const tmp = new Uint8Array(padded * h);
-            const src = new Uint8Array(heightData.buffer, heightData.byteOffset, heightData.byteLength);
-            for (let y = 0; y < h; y++) {
-                tmp.set(src.subarray(y*rowBytes, y*rowBytes + rowBytes), y*padded);
-            }
-            renderer.device.queue.writeTexture(
-                { texture: this.heightTexture },
-                tmp,
-                { bytesPerRow: padded },
-                [w, h, 1]
-            );
-        }
-    }
-
-    setHeightUpdater(fn: (dtSec: number, heightIn: Float32Array, heightOut: Float32Array) => void) {
-        this.updater = fn;
-    }
-
     // Prepare per-frame upload helpers based on current (heightW, heightH).
     // Ensures we have:
     //  - rowBytes & paddedBytesPerRow computed (256-byte alignment for WebGPU)
@@ -610,33 +619,17 @@ export class NaiveRenderer extends renderer.Renderer {
                 this.uploadScratch = new Uint8Array(this.paddedBytesPerRow * this.heightH);
             }
         }
-        if (!this.heightArray) {
-            this.heightArray = new Float32Array(this.heightW * this.heightH);
-            this.heightArrayB = new Float32Array(this.heightW * this.heightH);
-
-            for (let j = 1; j < this.heightW - 1; ++j) {
-                for (let i = 1; i < this.heightH - 1; ++i) {
-                    const idx = j * this.heightH + i;
-                    this.heightArray[idx] = Math.random();
-                }
-            }
-        }
     }
 
-    /**
-     * Writes the height data array to the height texture
-     * @param heightData The height array
-     */
-    // Fast path: upload a W×H Float32Array into the existing height texture.
-    // Avoids re-creating textures/bind groups; handles 256-byte row alignment.
-    private updateHeightInPlace(heightData: Float32Array) {
+    private updateTexture(heightData: Float32Array, heightTexture: GPUTexture)
+    {
         const data = new Float32Array(heightData);
         this.initRowInfoIfNeeded();
 
         // Aligned -> upload directly
         if (this.paddedBytesPerRow === this.rowBytes) {
             renderer.device.queue.writeTexture(
-                { texture: this.heightTexture },
+                { texture: heightTexture },
                 data,
                 { bytesPerRow: this.rowBytes },
                 [this.heightW, this.heightH, 1]
@@ -651,7 +644,7 @@ export class NaiveRenderer extends renderer.Renderer {
                 tmp.set(src.subarray(s, s + this.rowBytes), d);
             }
             renderer.device.queue.writeTexture(
-                { texture: this.heightTexture },
+                { texture: heightTexture },
                 tmp,
                 { bytesPerRow: this.paddedBytesPerRow },
                 [this.heightW, this.heightH, 1]
@@ -659,33 +652,11 @@ export class NaiveRenderer extends renderer.Renderer {
         }
     }
 
-    // Called every frame before drawing. Fills heightArray either via user-provided
-    // simulation callback (setHeightUpdater) or with a demo wave when no callback is set.
-    // Then uploads the new height field into the GPU texture.
+    // Called every frame before drawing.
     protected override onBeforeDraw(dtMs: number): void {
         const dt = dtMs / 1000; 
-        this.initRowInfoIfNeeded();
-        const inBuf  = this.useA ? this.heightArray : this.heightArrayB;
-        const outBuf = this.useA ? this.heightArrayB : this.heightArray;
 
-        if (this.updater) {
-            // External simulation writes into 'arr' (W*H floats)
-            this.updater(dt, inBuf, outBuf);
-        } else {
-            this._t += dt;
-            const W = this.heightW, H = this.heightH;
-            const s = 0.05, w = this._t;
-            for (let y = 0; y < H; y++) {
-                for (let x = 0; x < W; x++) {
-                outBuf[y*W + x] = 0.1*Math.sin(x*s + w) * Math.cos(y*s + 0.5*w);
-                }
-            }
-        }
-
-        // Upload into the existing height texture
-        this.updateHeightInPlace(outBuf);
-
-        this.useA = !this.useA;
+        this.simulator.simulate(dt);
     }
 
     private updateReflectionUniforms() {

@@ -1,10 +1,14 @@
+import { DiffuseCS } from "./Diffuse";
+
 export class Simulator {
   W: number;
   H: number;
+  private diffuse: DiffuseCS;
 
-  constructor(W: number, H: number) {
+  constructor(W: number, H: number, diffuse: DiffuseCS) {
     this.W = W;
     this.H = H;
+    this.diffuse = diffuse;
   }
 
   simulateBulk(dt: GLfloat) {
@@ -20,15 +24,22 @@ export class Simulator {
   }
 
 
-  simulate(dt: GLfloat, heightIn: Float32Array, heightOut: Float32Array) {
-    for (let j = 1; j < this.W - 1; ++j) {
-      for (let i = 1; i < this.H - 1; ++i) {
-        const idx = j * this.H + i;
-        let target = (heightIn[idx-1] + heightIn[idx+1]
-                            + heightIn[idx+this.H] + heightIn[idx-this.H]) / 4.0;
+  simulate(dt: GLfloat) {
 
-        heightOut[idx] = heightIn[idx] + (target - heightIn[idx]) * 0.05;
-      }
+    //Run this 128 times, making sure to clamp dt to 0.25
+    const clampedDt = Math.min(dt, 0.25);
+    for (let i = 0; i < 128; i++) {
+      this.diffuse.step(clampedDt);
     }
+
+    // for (let j = 1; j < this.W - 1; ++j) {
+    //   for (let i = 1; i < this.H - 1; ++i) {
+    //     const idx = j * this.H + i;
+    //     let target = (heightIn[idx-1] + heightIn[idx+1]
+    //                         + heightIn[idx+this.H] + heightIn[idx-this.H]) / 4.0;
+
+    //     heightOut[idx] = heightIn[idx] + (target - heightIn[idx]) * 0.05;
+    //   }
+    // }
   }
 }

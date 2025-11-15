@@ -3,12 +3,15 @@ import { GUI } from 'dat.gui';
 
 import { initWebGPU, Renderer } from './renderer';
 import { NaiveRenderer } from './renderers/naive';
+import { DiffuseRenderer } from './renderers/DiffuseRender';
 import { Simulator } from './simulator/simulator';
 
 import { setupLoaders, Scene } from './stage/scene';
 import { Camera } from './stage/camera';
 import { Stage } from './stage/stage';
 import { constants } from './shaders/shaders';
+
+import { DiffuseCS } from './simulator/Diffuse';
 
 await initWebGPU();
 setupLoaders();
@@ -26,22 +29,17 @@ const gui = new GUI();
 
 const stage = new Stage(scene, camera, stats);
 
+// NaiveRenderer
 var renderer: NaiveRenderer | undefined;
 
 renderer?.stop();
 renderer = new NaiveRenderer(stage);
 
-// Height map render
-// Allocate a heightmap (W×H). Each texel is one float (r32float).
-const W=256, H=256;
-const arr = new Float32Array(W * H);
+// // DiffuseRender
+// var renderer: DiffuseRenderer | undefined;
 
-let sim = new Simulator(W, H);
-
-// TODO: change simulate(dt, out) to the real simulation function
-renderer.setHeightUpdater((dt, heightIn, heightOut) => {
-  sim.simulate(dt, heightIn, heightOut);
-});
+// renderer?.stop();
+// renderer = new DiffuseRenderer(stage);
 
 // Set water-surface parameters:
 // worldScaleXY -> the grid spans [-a,+b] in X and Z (width/depth = 2 units)
@@ -50,4 +48,4 @@ renderer.setHeightUpdater((dt, heightIn, heightOut) => {
 renderer.setHeightParams(5, 2, 1, constants.water_base_level);
 
 // Initialize GPU height texture and bind groups with the first frame’s data.
-renderer.updateHeight(arr, W, H);
+//renderer.updateHeight(arr, W, H);

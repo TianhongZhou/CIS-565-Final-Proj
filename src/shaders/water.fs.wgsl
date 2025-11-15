@@ -76,5 +76,6 @@ fn fs_main(in: FSIn) -> @location(0) vec4<f32> {
   // Keep water semi-transparent (for blending)
   let alpha = 0.8;
   
-  return vec4<f32>(color, alpha);
+  return vec4<f32>((N + 1.0) / 2.0, 1.0);
+  // return vec4<f32>(color, alpha);
 }
