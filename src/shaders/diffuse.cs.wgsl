@@ -65,6 +65,7 @@ fn calculateAlpha(pos: vec3u, height: f32, deltaHeight: f32) -> f32 {
         let e = 2.718281828459045;
         let d = 0.01;
         alpha = (height * height) / 64.0 * pow(e, -d * deltaHeight * deltaHeight);
+        //alpha = (height * height) / 64.0;
     }
     return alpha;
 }

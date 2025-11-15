@@ -16,7 +16,7 @@
 
 @compute
 @workgroup_size(${threadsInDiffusionBlockX}, ${threadsInDiffusionBlockY}, 1)
-fn getTotalHeight(@builtin(global_invocation_id) globalIdx: vec3u) {
+fn reconstructHeight(@builtin(global_invocation_id) globalIdx: vec3u) {
 
     let size = textureDimensions(lowFreqIn);
     if(globalIdx.x >= size.x || globalIdx.y >= size.y) {

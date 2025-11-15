@@ -337,6 +337,7 @@ export class DiffuseRenderer extends renderer.Renderer {
             ]
         });
 
+        //Contains time step, grid scale, and the terrain height texture
         this.diffusionConstantsComputeBindGroupLayout = renderer.device.createBindGroupLayout({
             label: "diffusion constants compute bind group layout",
             entries: [
@@ -346,6 +347,8 @@ export class DiffuseRenderer extends renderer.Renderer {
             ]
         });
 
+
+        //Bind groups for the different height textures
         this.diffusionHeightComputeBindGroup = renderer.device.createBindGroup({
             layout: this.diffusionHeightComputeBindGroupLayout,
             entries: [
@@ -377,7 +380,9 @@ export class DiffuseRenderer extends renderer.Renderer {
             size: 4,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
         });
-        renderer.device.queue.writeBuffer(timeStepBuffer, 0, Float32Array.from([0.25])); //Currently defaulting the time step to 16ms
+
+        //ImportantPart: the diffusion takes in a time step, and it is maximumlly stable at 0.25, so remember to clamp it to it.
+        renderer.device.queue.writeBuffer(timeStepBuffer, 0, Float32Array.from([0.25])); 
         renderer.device.queue.writeBuffer(gridScaleBuffer, 0, Float32Array.from([1.0]));
         this.diffusionConstantsComputeBindGroup = renderer.device.createBindGroup({
             label: "diffusion constants compute bind group",
@@ -421,9 +426,9 @@ export class DiffuseRenderer extends renderer.Renderer {
             compute: {
                 module: renderer.device.createShaderModule({
                     label: "reconstruct height compute shader",
-                    code: shaders.getTotalHeightSrc
+                    code: shaders.reconstructHeightSrc
                 }),
-                entryPoint: "getTotalHeight"
+                entryPoint: "reconstructHeight"
             }
         });
 
@@ -444,11 +449,11 @@ export class DiffuseRenderer extends renderer.Renderer {
         } else {
             this._t += dt;
             const W = this.heightW, H = this.heightH;
-            const s = 0.05, w = this._t;
+            const s = 15, w = this._t;
             for (let y = 0; y < H; y++) {
                 for (let x = 0; x < W; x++) {
-                terrainArr[y*W + x] = Math.sin(x*s + w) * Math.cos(y*s + 0.5*w);
-                lowFreqArr[y*W + x] = 2;
+                terrainArr[y*W + x] = 0;
+                lowFreqArr[y*W + x] = Math.sin(x*s + w) * Math.cos(y*s + 0.5*w) * 1 + 1;
                 //highFreqArr[y*W + x] = terrainArr[y*W + x] + 0;
                 }
             }
@@ -461,7 +466,7 @@ export class DiffuseRenderer extends renderer.Renderer {
         this.updateTexture(lowFreqArr, this.heightWaveTexture);
         //this.updateTexture(lowFreqArr, this.lowFreqWaveTexture);
         //this.updateTexture(lowFreqArr, this.highFreqWaveTexture);
-        //TODO: run compute shader 128 times, ping ponging between the two sets of textures for the low/high frequency waves
+        //ImportantPart: runs the diffusion compute shader. Current set to 1 to demonstrate seperation, set it to 128 for diffusion. You can also set it to 1280 to see more obvious diffusion.
         const encoder = renderer.device.createCommandEncoder();
         for(let i = 0; i < 1280; i++) {
         
@@ -529,11 +534,11 @@ export class DiffuseRenderer extends renderer.Renderer {
         renderPass.setVertexBuffer(0, this.heightVBO);
         renderPass.setIndexBuffer(this.heightIBO, "uint32");
 
-        
+        /*
         renderPass.setBindGroup(1, this.terrainBindGroup); //Terrain
         renderPass.setBindGroup(2, this.terrainColorBindGroup);
         renderPass.drawIndexed(this.heightIndexCount);
-        
+        */
         
         renderPass.setBindGroup(1, this.lowFrequencyBindGroup); //Low Frequency waves
         renderPass.setBindGroup(2, this.lowFreqWaveColorBindGroup);
@@ -585,7 +590,7 @@ export class DiffuseRenderer extends renderer.Renderer {
             this.highFrequencyArray = new Float32Array(this.heightW * this.heightH);
         }
     }
-
+    //Convenience function to upload a height field into a height texture
     private updateTexture(heightData: Float32Array, heightTexture: GPUTexture)
     {
         const data = new Float32Array(heightData);

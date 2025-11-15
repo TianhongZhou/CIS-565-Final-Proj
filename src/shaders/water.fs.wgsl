@@ -7,15 +7,12 @@ struct FSIn {
   @location(1) normal   : vec3<f32>,
   @location(2) uv       : vec2<f32>
 };
-@group(2) @binding(0) var<uniform> waveColor : vec3f;
-
 
 @fragment
 fn fs_main(in: FSIn) -> @location(0) vec4<f32> {
   // Ensure the normal is unit length
   let N = normalize(in.normal);
   
-  //let color = 0.5 * (N + 1.0);
-  let color = waveColor * abs(N.y + 0.2);
+  let color = 0.5 * (N + 1.0);
   return vec4<f32>(color, 1.0);
 }
