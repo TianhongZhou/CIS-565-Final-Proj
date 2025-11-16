@@ -1,12 +1,12 @@
 //The newly calculated
 @group(0) @binding(0) var lowFreqIn: texture_storage_2d<r32float, read_write>;
 
+@group(1) @binding(0) var heightIn: texture_storage_2d<r32float, read_write>;
+
+@group(2) @binding(0) var highFreqOut: texture_storage_2d<r32float, read_write>;
 
 
-@group(1) @binding(0) var highFreqIn: texture_storage_2d<r32float, read_write>;
 
-
-@group(2) @binding(0) var heightOut: texture_storage_2d<r32float, read_write>;
 
 
 @group(3) @binding(0) var<uniform> timeStep: f32;
@@ -24,8 +24,8 @@ fn reconstructHeight(@builtin(global_invocation_id) globalIdx: vec3u) {
     }
     let terrainHeight = textureLoad(terrainHeightIn, vec2u(globalIdx.x, globalIdx.y)).x;
     let lowFreqHeight = textureLoad(lowFreqIn, vec2u(globalIdx.x, globalIdx.y)).x;
-    let highFreqHeight = textureLoad(highFreqIn, vec2u(globalIdx.x, globalIdx.y)).x;
+    let height = textureLoad(heightIn, vec2u(globalIdx.x, globalIdx.y)).x;
     
-    textureStore(heightOut, vec2u(globalIdx.x, globalIdx.y), vec4f(lowFreqHeight + highFreqHeight, 0, 0, 0));
+    textureStore(highFreqOut, vec2u(globalIdx.x, globalIdx.y), vec4f(height - lowFreqHeight, 0, 0, 0));
 
 }

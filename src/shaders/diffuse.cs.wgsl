@@ -5,17 +5,18 @@ struct Heights {
 }
 
 
-@group(0) @binding(0) var heightIn: texture_storage_2d<r32float, read_write>;
-@group(1) @binding(0) var lowFreqOut: texture_storage_2d<r32float, read_write>;
-@group(2) @binding(0) var highFreqOut: texture_storage_2d<r32float, read_write>;
 
-@group(3) @binding(0) var<uniform> timeStep: f32;
-@group(3) @binding(1) var<uniform> gridScale: f32;
-@group(3) @binding(2) var terrainHeightIn: texture_storage_2d<r32float, read>;
+
+@group(0) @binding(0) var diffusionIn: texture_storage_2d<r32float, read_write>;
+@group(1) @binding(0) var lowFreqOut: texture_storage_2d<r32float, read_write>;
+
+@group(2) @binding(0) var<uniform> timeStep: f32;
+@group(2) @binding(1) var<uniform> gridScale: f32;
+@group(2) @binding(2) var terrainHeightIn: texture_storage_2d<r32float, read>;
 
 fn calculateHeights(pos: vec2u) -> Heights {
     var heights: Heights; 
-    let size = textureDimensions(heightIn);
+    let size = textureDimensions(diffusionIn);
     if(pos.x >= size.x || pos.y >= size.y || pos.x < 0 || pos.y < 0) {
         heights.height = 0;
         heights.terrain = 0;
@@ -24,7 +25,7 @@ fn calculateHeights(pos: vec2u) -> Heights {
     }
     else
     {
-       heights.height = textureLoad(heightIn, vec2u(pos.x, pos.y)).x;
+       heights.height = textureLoad(diffusionIn, vec2u(pos.x, pos.y)).x;
        heights.terrain = textureLoad(terrainHeightIn, vec2u(pos.x, pos.y)).x;
        heights.totalHeight = heights.height + heights.terrain;
     }
@@ -35,7 +36,7 @@ fn calculateHeights(pos: vec2u) -> Heights {
 
 fn calculateAlpha(pos: vec3u, height: f32, deltaHeight: f32) -> f32 {
     var alpha: f32;
-    let size = textureDimensions(heightIn);
+    let size = textureDimensions(diffusionIn);
     if(pos.x >= size.x || pos.y >= size.y || pos.x < 0 || pos.y < 0) {
         alpha = 0.0;
        
@@ -53,7 +54,7 @@ fn calculateAlpha(pos: vec3u, height: f32, deltaHeight: f32) -> f32 {
 @workgroup_size(${threadsInDiffusionBlockX}, ${threadsInDiffusionBlockY}, 1)
 fn diffuse(@builtin(global_invocation_id) globalIdx: vec3u) {
 
-    let size = textureDimensions(heightIn);
+    let size = textureDimensions(diffusionIn);
     if(globalIdx.x >= size.x || globalIdx.y >= size.y) {
         return;
     }
@@ -78,8 +79,8 @@ fn diffuse(@builtin(global_invocation_id) globalIdx: vec3u) {
     var finiteDifferenceHeightY = (heightsUp.totalHeight + heightsDown.totalHeight - 2.0 * heightsCenter.totalHeight) / (gridScale * gridScale);
 
     //Centered Difference Calculation
-    var deltaHeightx = heightsRight.totalHeight - heightsLeft.totalHeight / (2 * gridScale);
-    var deltaHeighty = heightsUp.totalHeight - heightsDown.totalHeight / (2 * gridScale);
+    var deltaHeightx = (heightsRight.totalHeight - heightsLeft.totalHeight) / (2 * gridScale);
+    var deltaHeighty = (heightsUp.totalHeight - heightsDown.totalHeight) / (2 * gridScale);
 
     var xAlpha =  calculateAlpha(globalIdx, heightsCenter.totalHeight, deltaHeightx);
     var yAlpha =  calculateAlpha(globalIdx, heightsCenter.totalHeight, deltaHeighty);
@@ -92,7 +93,7 @@ fn diffuse(@builtin(global_invocation_id) globalIdx: vec3u) {
 
     
     textureStore(lowFreqOut, vec2u(globalIdx.x, globalIdx.y), vec4f(lowFreq, 0, 0, 0));
-    textureStore(highFreqOut, vec2u(globalIdx.x, globalIdx.y), vec4f(highFreq, 0, 0, 0));
+    //textureStore(highFreqOut, vec2u(globalIdx.x, globalIdx.y), vec4f(highFreq, 0, 0, 0));
     
 
 }
