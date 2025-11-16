@@ -5,8 +5,10 @@ export class DiffuseCS {
     private width: number;
     private height: number;
 
-    private heightTex: GPUTexture;
+    //TODO: Consider renaming to diffuseTex? Cause it can represent both height and flux
+    private heightTex: GPUTexture; 
     private lowFreqTex: GPUTexture;
+    private lowFreqTexPingpong: GPUTexture;
     private highFreqTex: GPUTexture;
     private terrainTex: GPUTexture;
 
@@ -15,6 +17,7 @@ export class DiffuseCS {
 
     private heightBindGroup!: GPUBindGroup;
     private lowFreqBindGroup!: GPUBindGroup;
+    private lowFreqBindGroupPingpong!: GPUBindGroup;
     private highFreqBindGroup!: GPUBindGroup;
     private constsBindGroup!: GPUBindGroup;
 
@@ -22,6 +25,7 @@ export class DiffuseCS {
     private gridScaleBuffer!: GPUBuffer;
 
     private diffusePipeline!: GPUComputePipeline;
+    //TODO: Rename to highFrequencyPipeline (and other files/classes related to the reconstructHeight step)
     private reconstructPipeline!: GPUComputePipeline;
 
     constructor(
@@ -29,7 +33,8 @@ export class DiffuseCS {
         width: number,
         height: number,
         heightTex: GPUTexture,       
-        lowFreqTex: GPUTexture,      
+        lowFreqTex: GPUTexture,     
+        lowFreqTexPingpong: GPUTexture, 
         highFreqTex: GPUTexture,      
         terrainTex: GPUTexture          
     ) {
@@ -38,6 +43,7 @@ export class DiffuseCS {
         this.height   = height;
         this.heightTex   = heightTex;
         this.lowFreqTex = lowFreqTex;
+        this.lowFreqTexPingpong = lowFreqTexPingpong;
         this.highFreqTex = highFreqTex;
         this.terrainTex  = terrainTex;
 
@@ -67,7 +73,7 @@ export class DiffuseCS {
             new Float32Array([1.0])
         );
 
-        // group(0) / group(1) / group(2): read_write storage texture
+        // Diffuse (group 0 / 1)) + Reconstruct (group 0 / 1 / 2): read_write storage texture
         this.ioBindGroupLayout = this.device.createBindGroupLayout({
             label: 'diffusion IO BGL',
             entries: [
@@ -83,7 +89,7 @@ export class DiffuseCS {
             ],
         });
 
-        // group(3)：dt, gridScale, highFreq, terrain
+        // Diffuse (group 2)) + Reconstruct (group 3)：dt, gridScale, highFreq, terrain
         this.constsBindGroupLayout = this.device.createBindGroupLayout({
             label: 'diffusion consts BGL',
             entries: [
@@ -111,7 +117,9 @@ export class DiffuseCS {
     }
 
     private createBindGroups() {
-        // group(0): height
+
+
+        // Reconstruct group(1) + Copy to lowFreq: height
 
 
         this.heightBindGroup = this.device.createBindGroup({
@@ -124,7 +132,7 @@ export class DiffuseCS {
             ],
         });
 
-        // group(1)：lowFreq
+        // Diffuse group(0) + Reconstruct group(0) + PingPonged with lowFreqPingPong：lowFreq
         this.lowFreqBindGroup = this.device.createBindGroup({
             layout: this.ioBindGroupLayout,
             entries: [
@@ -134,8 +142,29 @@ export class DiffuseCS {
                 },
             ],
         });
+        // Diffuse group(1) + PingPonged with lowFreq：lowFreqPingPong
+        this.lowFreqBindGroupPingpong = this.device.createBindGroup({
+            layout: this.ioBindGroupLayout,
+            entries: [
+                {
+                    binding: 0,
+                    resource: this.lowFreqTexPingpong.createView(),
+                },
+            ],
+        });
+        
 
-        // group(2): highFreq
+        // Diffuse group(2) + Reconstruct group(3)：dt, gridScale, highFreq, terrain
+        this.constsBindGroup = this.device.createBindGroup({
+            layout: this.constsBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: this.timeStepBuffer } },
+                { binding: 1, resource: { buffer: this.gridScaleBuffer } },
+                { binding: 2, resource: this.terrainTex.createView() },
+            ],
+        });
+
+        // Reconstruct group(2)：highFreq
         this.highFreqBindGroup = this.device.createBindGroup({
             layout: this.ioBindGroupLayout,
             entries: [
@@ -145,16 +174,6 @@ export class DiffuseCS {
                 },
             ],
         });
-
-        // group(3)：dt, gridScale, highFreq, terrain
-        this.constsBindGroup = this.device.createBindGroup({
-            layout: this.constsBindGroupLayout,
-            entries: [
-                { binding: 0, resource: { buffer: this.timeStepBuffer } },
-                { binding: 1, resource: { buffer: this.gridScaleBuffer } },
-                { binding: 2, resource: this.terrainTex.createView() },
-            ],
-        });
     }
 
     private createPipeline() {
@@ -162,10 +181,9 @@ export class DiffuseCS {
             label: 'diffusion compute pipeline',
             layout: this.device.createPipelineLayout({
                 bindGroupLayouts: [
-                    this.ioBindGroupLayout,       // group(0)  height
+                    this.ioBindGroupLayout,       // group(0)  DiffusionInput
                     this.ioBindGroupLayout,       // group(1)  lowFreq
-                    this.ioBindGroupLayout,       // group(2)  highFreq
-                    this.constsBindGroupLayout,   // group(3)  dt, gridScale, terrain
+                    this.constsBindGroupLayout,   // group(2)  dt, gridScale, terrain
                 ],
             }),
             compute: {
@@ -176,14 +194,14 @@ export class DiffuseCS {
                 entryPoint: 'diffuse',
             },
         });
-        //I have it organized inputs first then outputs, so that's why height's after in this case. 
+        //I have it organized inputs first then outputs, 
         this.reconstructPipeline = this.device.createComputePipeline({
             label: 'reconstruct compute pipeline',
             layout: this.device.createPipelineLayout({
                 bindGroupLayouts: [
                     this.ioBindGroupLayout,       // group(0)  lowFreq
-                    this.ioBindGroupLayout,       // group(1)  highFreq
-                    this.ioBindGroupLayout,       // group(2)  height
+                    this.ioBindGroupLayout,       // group(1)  diffusion
+                    this.ioBindGroupLayout,       // group(2)  highFreq
                     this.constsBindGroupLayout,   // group(3)  dt, gridScale, terrain
                 ],
             }),
@@ -214,24 +232,41 @@ export class DiffuseCS {
         const wgY = Math.ceil(
             this.height / shaders.constants.threadsInDiffusionBlockY
         );
-        
-        const diffusePass = encoder.beginComputePass();
-        diffusePass.setPipeline(this.diffusePipeline);
-        diffusePass.setBindGroup(0, this.heightBindGroup);      // group(0) height
-        diffusePass.setBindGroup(1, this.lowFreqBindGroup);     // group(1) lowFreq
-        diffusePass.setBindGroup(2, this.highFreqBindGroup);    // group(2) highFreq
-        diffusePass.setBindGroup(3, this.constsBindGroup);      // group(3) dt, gridScale, terrain
+        //Inital copy of height to lowFreq
+        encoder.copyTextureToTexture(
+            { texture: this.heightTex },
+            { texture: this.lowFreqTex },
+            {
+                width: this.width,
+                height: this.height,
+                depthOrArrayLayers: 1,
+            }
+        );
+        //Note: since we're pingponging, must have an even number of substeps
+        for(let i = 0; i < 128; i++)
+        {
+            const diffusePass = encoder.beginComputePass();
+            diffusePass.setPipeline(this.diffusePipeline);
+            diffusePass.setBindGroup(0, this.lowFreqBindGroup);             // group(0) lowFreq
+            diffusePass.setBindGroup(1, this.lowFreqBindGroupPingpong);     // group(1) lowFreqPingpong
+            diffusePass.setBindGroup(2, this.constsBindGroup);              // group(2) dt, gridScale, terrain
 
         
-        diffusePass.dispatchWorkgroups(wgX, wgY);
-        diffusePass.end();
+            diffusePass.dispatchWorkgroups(wgX, wgY);
+            diffusePass.end();
+            //Pingpong
+            const temp = this.lowFreqBindGroup;
+            this.lowFreqBindGroup = this.lowFreqBindGroupPingpong;
+            this.lowFreqBindGroupPingpong = temp;
+        }
+        
 
         const reconstructPass = encoder.beginComputePass();
         reconstructPass.setPipeline(this.reconstructPipeline);
         reconstructPass.setBindGroup(0, this.lowFreqBindGroup);     // group(0) lowFreq
-        reconstructPass.setBindGroup(1, this.highFreqBindGroup);    // group(1) highFreq
-        reconstructPass.setBindGroup(2, this.heightBindGroup);      //group(2) height
-        reconstructPass.setBindGroup(3, this.constsBindGroup);      //group(3) dt, gridScale, terrain
+        reconstructPass.setBindGroup(1, this.heightBindGroup);      // group(1) height
+        reconstructPass.setBindGroup(2, this.highFreqBindGroup);    // group(2) highFreq
+        reconstructPass.setBindGroup(3, this.constsBindGroup);      // group(3) dt, gridScale, terrain
 
         reconstructPass.dispatchWorkgroups(wgX, wgY);
         reconstructPass.end();

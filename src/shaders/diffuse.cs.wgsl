@@ -89,11 +89,8 @@ fn diffuse(@builtin(global_invocation_id) globalIdx: vec3u) {
     let diffusedHeight = heightsCenter.totalHeight + timeStep * (xAlpha * finiteDifferenceHeightX + yAlpha * finiteDifferenceHeightY);
 
     let lowFreq = diffusedHeight - heightsCenter.terrain;
-    let highFreq = lowFreq - heightsCenter.height;
 
-    
     textureStore(lowFreqOut, vec2u(globalIdx.x, globalIdx.y), vec4f(lowFreq, 0, 0, 0));
-    //textureStore(highFreqOut, vec2u(globalIdx.x, globalIdx.y), vec4f(highFreq, 0, 0, 0));
     
 
 }
