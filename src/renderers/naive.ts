@@ -23,7 +23,8 @@ export class NaiveRenderer extends renderer.Renderer {
     // R32Float texture storing heights (1 float per texel)
     heightTexture: GPUTexture;
     terrainTexture: GPUTexture;
-    lowFreqInTexture: GPUTexture;
+    lowFreqTexture: GPUTexture;
+    lowFreqTexturePingpong: GPUTexture;
     highFreqTexture: GPUTexture;
     // non-filtering sampler
     heightSampler: GPUSampler;
@@ -242,12 +243,16 @@ export class NaiveRenderer extends renderer.Renderer {
         });
 
         // lowFreq IN
-        this.lowFreqInTexture = renderer.device.createTexture({
+        this.lowFreqTexture = renderer.device.createTexture({
             size: [this.heightW, this.heightH],
             format: "r32float",
             usage: texUsage,
         });
-
+        this.lowFreqTexturePingpong = renderer.device.createTexture({
+            size: [this.heightW, this.heightH],
+            format: "r32float",
+            usage: texUsage,
+        });
         // highFreq
         this.highFreqTexture = renderer.device.createTexture({
             size: [this.heightW, this.heightH],
@@ -475,14 +480,16 @@ export class NaiveRenderer extends renderer.Renderer {
 
         this.updateTexture(terrainArr, this.terrainTexture);
         this.updateTexture(lowArr, this.heightTexture);  
-        this.updateTexture(lowArr, this.lowFreqInTexture);
+        this.updateTexture(lowArr, this.lowFreqTexture);
+        this.updateTexture(lowArr, this.lowFreqTexturePingpong);
         this.updateTexture(highArr, this.highFreqTexture);
 
         this.diffuse = new DiffuseCS(
             renderer.device,
             this.heightW,
             this.heightH,
-            this.lowFreqInTexture,
+            this.lowFreqTexture,
+            this.lowFreqTexturePingpong,
             this.heightTexture,
             this.highFreqTexture,
             this.terrainTexture
