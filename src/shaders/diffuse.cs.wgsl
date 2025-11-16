@@ -79,8 +79,8 @@ fn diffuse(@builtin(global_invocation_id) globalIdx: vec3u) {
     var finiteDifferenceHeightY = (heightsUp.totalHeight + heightsDown.totalHeight - 2.0 * heightsCenter.totalHeight) / (gridScale * gridScale);
 
     //Centered Difference Calculation
-    var deltaHeightx = (heightsRight.totalHeight - heightsLeft.totalHeight) / (2 * gridScale);
-    var deltaHeighty = (heightsUp.totalHeight - heightsDown.totalHeight) / (2 * gridScale);
+    var deltaHeightx = (heightsRight.totalHeight - heightsLeft.totalHeight) / (2.0 * gridScale);
+    var deltaHeighty = (heightsUp.totalHeight - heightsDown.totalHeight) / (2.0 * gridScale);
 
     var xAlpha =  calculateAlpha(globalIdx, heightsCenter.totalHeight, deltaHeightx);
     var yAlpha =  calculateAlpha(globalIdx, heightsCenter.totalHeight, deltaHeighty);

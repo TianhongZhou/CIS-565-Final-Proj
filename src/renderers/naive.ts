@@ -45,13 +45,26 @@ export class NaiveRenderer extends renderer.Renderer {
     // how many indices to draw
     heightIndexCount = 0;
 
+    // --- Flux decompose state ---
+    qxTexture: GPUTexture;
+    qxLowFreqTexture: GPUTexture;
+    qxLowFreqTexturePingpong: GPUTexture;
+    qxHighFreqTexture: GPUTexture;
+
+    qyTexture: GPUTexture;
+    qyLowFreqTexture: GPUTexture;
+    qyLowFreqTexturePingpong: GPUTexture;
+    qyHighFreqTexture: GPUTexture;
+
     // --- Upload helpers for writeTexture() row alignment ---
     private rowBytes = 0;
     private paddedBytesPerRow = 0;
     private uploadScratch: Uint8Array | null = null;
 
     // Diffuse compute
-    private diffuse: DiffuseCS;
+    private diffuseHeight: DiffuseCS;
+    private diffuseFluxX: DiffuseCS;
+    private diffuseFluxY: DiffuseCS;
     private simulator: Simulator;
 
     // --- Reflection state (CPU & GPU resources) ---
@@ -262,6 +275,50 @@ export class NaiveRenderer extends renderer.Renderer {
 
         // terrain
         this.terrainTexture = renderer.device.createTexture({
+            size: [this.heightW, this.heightH],
+            format: "r32float",
+            usage: texUsage,
+        });
+
+        // flux x
+        this.qxTexture = renderer.device.createTexture({
+            size: [this.heightW, this.heightH],
+            format: "r32float",
+            usage: texUsage,
+        });
+        this.qxLowFreqTexture = renderer.device.createTexture({
+            size: [this.heightW, this.heightH],
+            format: "r32float",
+            usage: texUsage,
+        });
+        this.qxLowFreqTexturePingpong = renderer.device.createTexture({
+            size: [this.heightW, this.heightH],
+            format: "r32float",
+            usage: texUsage,
+        });
+        this.qxHighFreqTexture = renderer.device.createTexture({
+            size: [this.heightW, this.heightH],
+            format: "r32float",
+            usage: texUsage,
+        });
+
+        // flux y
+        this.qyTexture = renderer.device.createTexture({
+            size: [this.heightW, this.heightH],
+            format: "r32float",
+            usage: texUsage,
+        });
+        this.qyLowFreqTexture = renderer.device.createTexture({
+            size: [this.heightW, this.heightH],
+            format: "r32float",
+            usage: texUsage,
+        });
+        this.qyLowFreqTexturePingpong = renderer.device.createTexture({
+            size: [this.heightW, this.heightH],
+            format: "r32float",
+            usage: texUsage,
+        });
+        this.qyHighFreqTexture = renderer.device.createTexture({
             size: [this.heightW, this.heightH],
             format: "r32float",
             usage: texUsage,
@@ -484,21 +541,56 @@ export class NaiveRenderer extends renderer.Renderer {
         this.updateTexture(lowArr, this.lowFreqTexturePingpong);
         this.updateTexture(highArr, this.highFreqTexture);
 
-        this.diffuse = new DiffuseCS(
+        const fluxInit = new Float32Array(this.heightW * this.heightH);
+        this.updateTexture(fluxInit, this.qxTexture);
+        this.updateTexture(fluxInit, this.qxLowFreqTexture);
+        this.updateTexture(fluxInit, this.qxLowFreqTexturePingpong);
+        this.updateTexture(fluxInit, this.qxHighFreqTexture);
+
+        this.updateTexture(fluxInit, this.qyTexture);
+        this.updateTexture(fluxInit, this.qyLowFreqTexture);
+        this.updateTexture(fluxInit, this.qyLowFreqTexturePingpong);
+        this.updateTexture(fluxInit, this.qyHighFreqTexture);
+
+        this.diffuseHeight = new DiffuseCS(
             renderer.device,
             this.heightW,
             this.heightH,
-            this.lowFreqTexture,
-            this.lowFreqTexturePingpong,
-            this.heightTexture,
-            this.highFreqTexture,
+            this.heightTexture,           // fieldTex: height
+            this.lowFreqTexture,          // lowFreqTex
+            this.lowFreqTexturePingpong,  // lowFreqTexPingpong
+            this.highFreqTexture,         // highFreqTex
+            this.terrainTexture
+        );
+
+        this.diffuseFluxX = new DiffuseCS(
+            renderer.device,
+            this.heightW,
+            this.heightH,
+            this.qxTexture,               // qx
+            this.qxLowFreqTexture,
+            this.qxLowFreqTexturePingpong,
+            this.qxHighFreqTexture,
+            this.terrainTexture   
+        );
+
+        this.diffuseFluxY = new DiffuseCS(
+            renderer.device,
+            this.heightW,
+            this.heightH,
+            this.qyTexture,               // qy
+            this.qyLowFreqTexture,
+            this.qyLowFreqTexturePingpong,
+            this.qyHighFreqTexture,
             this.terrainTexture
         );
 
         this.simulator = new Simulator(
             this.heightW,
             this.heightH,
-            this.diffuse
+            this.diffuseHeight,
+            this.diffuseFluxX,
+            this.diffuseFluxY
         );
     }
 

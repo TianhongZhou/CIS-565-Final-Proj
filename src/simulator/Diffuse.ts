@@ -6,7 +6,7 @@ export class DiffuseCS {
     private height: number;
 
     //TODO: Consider renaming to diffuseTex? Cause it can represent both height and flux
-    private heightTex: GPUTexture; 
+    private diffuseTex: GPUTexture; 
     private lowFreqTex: GPUTexture;
     private lowFreqTexPingpong: GPUTexture;
     private highFreqTex: GPUTexture;
@@ -32,7 +32,7 @@ export class DiffuseCS {
         device: GPUDevice,
         width: number,
         height: number,
-        heightTex: GPUTexture,       
+        fieldTex: GPUTexture,       
         lowFreqTex: GPUTexture,     
         lowFreqTexPingpong: GPUTexture, 
         highFreqTex: GPUTexture,      
@@ -41,7 +41,7 @@ export class DiffuseCS {
         this.device   = device;
         this.width    = width;
         this.height   = height;
-        this.heightTex   = heightTex;
+        this.diffuseTex   = fieldTex;
         this.lowFreqTex = lowFreqTex;
         this.lowFreqTexPingpong = lowFreqTexPingpong;
         this.highFreqTex = highFreqTex;
@@ -127,7 +127,7 @@ export class DiffuseCS {
             entries: [
                 {
                     binding: 0,
-                    resource: this.heightTex.createView(),
+                    resource: this.diffuseTex.createView(),
                 },
             ],
         });
@@ -234,7 +234,7 @@ export class DiffuseCS {
         );
         //Inital copy of height to lowFreq
         encoder.copyTextureToTexture(
-            { texture: this.heightTex },
+            { texture: this.diffuseTex },
             { texture: this.lowFreqTex },
             {
                 width: this.width,
