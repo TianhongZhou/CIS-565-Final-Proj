@@ -32,9 +32,8 @@ export class Simulator {
 
     //Run this 128 times, making sure to clamp dt to 0.25
     const clampedDt = Math.min(dt, 0.25);
-    for (let i = 0; i < 128; i++) {
-      this.diffuse.step(clampedDt);
-    }
+
+    this.diffuse.step(clampedDt);
 
     //this.diffuseHeight.step(dt);
     //this.diffuseFlux.step(dt);

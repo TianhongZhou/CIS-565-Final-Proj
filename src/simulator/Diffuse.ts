@@ -119,7 +119,7 @@ export class DiffuseCS {
     private createBindGroups() {
 
 
-        // Reconstruct group(1) + Copy to lowFreq: height
+        // Reconstruct group(1) + Copy to lowFreq: height (diffusion)
 
 
         this.heightBindGroup = this.device.createBindGroup({
