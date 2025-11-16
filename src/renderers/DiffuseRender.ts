@@ -18,7 +18,8 @@ export class DiffuseRenderer extends renderer.Renderer {
 
     // R32Float texture storing heights (1 float per texel)
     heightWaveTexture: GPUTexture;
-    lowFreqWaveTexture: GPUTexture;
+    lowFreqWaveInTexture: GPUTexture;
+    lowFreqWaveOutTexture: GPUTexture;
     highFreqWaveTexture: GPUTexture;
     heightTerrainTexture: GPUTexture;
 
@@ -41,6 +42,7 @@ export class DiffuseRenderer extends renderer.Renderer {
     terrainColorBindGroup: GPUBindGroup;
     // bound view/sampler/UBO used by the water vertex shader
     lowFrequencyBindGroup: GPUBindGroup;
+
     highFrequencyBindGroup: GPUBindGroup;
     terrainBindGroup: GPUBindGroup;
 
@@ -60,10 +62,12 @@ export class DiffuseRenderer extends renderer.Renderer {
     // Compute shader resources
     diffusionComputePipeline: GPUComputePipeline;
     reconstructHeightPipeline: GPUComputePipeline;
+
     diffusionHeightComputeBindGroupLayout: GPUBindGroupLayout; //Ping pong low/high freq
     diffusionConstantsComputeBindGroupLayout: GPUBindGroupLayout; 
     diffusionHeightComputeBindGroup: GPUBindGroup;
-    diffusionLowFreqComputeBindGroup: GPUBindGroup;
+    diffusionLowFreqInComputeBindGroup: GPUBindGroup;
+    diffusionLowFreqOutComputeBindGroup: GPUBindGroup;
     diffusionHighFreqComputeBindGroup: GPUBindGroup;
     diffusionConstantsComputeBindGroup: GPUBindGroup;
     
@@ -169,10 +173,16 @@ export class DiffuseRenderer extends renderer.Renderer {
         }
 
         // R32Float height texture (unfilterable). One float per texel.
-        this.lowFreqWaveTexture = renderer.device.createTexture({
+        this.lowFreqWaveInTexture = renderer.device.createTexture({
             size: [256, 256], 
             format: "r32float",
-            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.STORAGE_BINDING,
+            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC | GPUTextureUsage.STORAGE_BINDING,
+        });
+
+        this.lowFreqWaveOutTexture = renderer.device.createTexture({
+            size: [256, 256], 
+            format: "r32float",
+            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC | GPUTextureUsage.STORAGE_BINDING,
         });
 
         this.highFreqWaveTexture = renderer.device.createTexture({
@@ -189,7 +199,7 @@ export class DiffuseRenderer extends renderer.Renderer {
         this.heightWaveTexture = renderer.device.createTexture({
             size: [256, 256],
             format: "r32float",
-            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.STORAGE_BINDING,
+            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC | GPUTextureUsage.STORAGE_BINDING,
         });
 
 
@@ -235,10 +245,12 @@ export class DiffuseRenderer extends renderer.Renderer {
             layout: this.heightBindGroupLayout,
             entries: [
                 { binding: 0, resource: this.heightSampler },
-                { binding: 1, resource: this.lowFreqWaveTexture.createView() },
+                { binding: 1, resource: this.lowFreqWaveInTexture.createView() },
                 { binding: 2, resource: { buffer: this.heightConsts } },
             ]
         });
+        
+
         
         this.highFrequencyBindGroup = renderer.device.createBindGroup({
             layout: this.heightBindGroupLayout,
@@ -355,10 +367,16 @@ export class DiffuseRenderer extends renderer.Renderer {
                 { binding: 0, resource: this.heightWaveTexture.createView() }
             ]
         });
-        this.diffusionLowFreqComputeBindGroup = renderer.device.createBindGroup({
+        this.diffusionLowFreqInComputeBindGroup = renderer.device.createBindGroup({
             layout: this.diffusionHeightComputeBindGroupLayout,
             entries: [
-                { binding: 0, resource: this.lowFreqWaveTexture.createView() }
+                { binding: 0, resource: this.lowFreqWaveInTexture.createView() }
+            ]
+        });
+        this.diffusionLowFreqOutComputeBindGroup = renderer.device.createBindGroup({
+            layout: this.diffusionHeightComputeBindGroupLayout,
+            entries: [
+                { binding: 0, resource: this.lowFreqWaveOutTexture.createView() }
             ]
         });
         this.diffusionHighFreqComputeBindGroup = renderer.device.createBindGroup({
@@ -398,7 +416,6 @@ export class DiffuseRenderer extends renderer.Renderer {
             label: "diffusion compute pipeline",
             layout: renderer.device.createPipelineLayout({
                 bindGroupLayouts: [
-                    this.diffusionHeightComputeBindGroupLayout,
                     this.diffusionHeightComputeBindGroupLayout,
                     this.diffusionHeightComputeBindGroupLayout,
                     this.diffusionConstantsComputeBindGroupLayout
@@ -449,7 +466,7 @@ export class DiffuseRenderer extends renderer.Renderer {
         } else {
             this._t += dt;
             const W = this.heightW, H = this.heightH;
-            const s = 15, w = this._t;
+            const s = 0.05, w = this._t;
             for (let y = 0; y < H; y++) {
                 for (let x = 0; x < W; x++) {
                 terrainArr[y*W + x] = 0;
@@ -468,26 +485,38 @@ export class DiffuseRenderer extends renderer.Renderer {
         //this.updateTexture(lowFreqArr, this.highFreqWaveTexture);
         //ImportantPart: runs the diffusion compute shader. Current set to 1 to demonstrate seperation, set it to 128 for diffusion. You can also set it to 1280 to see more obvious diffusion.
         const encoder = renderer.device.createCommandEncoder();
-        for(let i = 0; i < 1; i++) {
+        encoder.copyTextureToTexture(
+            { texture: this.heightWaveTexture },
+            { texture: this.lowFreqWaveInTexture },
+            {
+                width: this.heightW,
+                height: this.heightH,
+                depthOrArrayLayers: 1,
+            }
+        );
+        for(let i = 0; i < 1280; i++) {
         
             const diffusePass = encoder.beginComputePass();
             diffusePass.setPipeline(this.diffusionComputePipeline);
-            diffusePass.setBindGroup(0, this.diffusionHeightComputeBindGroup);
-            diffusePass.setBindGroup(1, this.diffusionLowFreqComputeBindGroup);
-            diffusePass.setBindGroup(2, this.diffusionHighFreqComputeBindGroup);
-            diffusePass.setBindGroup(3, this.diffusionConstantsComputeBindGroup);
+            diffusePass.setBindGroup(0, this.diffusionLowFreqInComputeBindGroup);
+            diffusePass.setBindGroup(1, this.diffusionLowFreqOutComputeBindGroup);
+            diffusePass.setBindGroup(2, this.diffusionConstantsComputeBindGroup);
             diffusePass.dispatchWorkgroups(Math.ceil(this.heightW / shaders.constants.threadsInDiffusionBlockX), Math.ceil(this.heightH / shaders.constants.threadsInDiffusionBlockY));
             diffusePass.end();
-            
-            const reconstructPass = encoder.beginComputePass();
-            reconstructPass.setPipeline(this.reconstructHeightPipeline);
-            reconstructPass.setBindGroup(0, this.diffusionLowFreqComputeBindGroup);
-            reconstructPass.setBindGroup(1, this.diffusionHighFreqComputeBindGroup);
-            reconstructPass.setBindGroup(2, this.diffusionHeightComputeBindGroup);
-            reconstructPass.setBindGroup(3, this.diffusionConstantsComputeBindGroup);
-            reconstructPass.dispatchWorkgroups(Math.ceil(this.heightW / shaders.constants.threadsInDiffusionBlockX), Math.ceil(this.heightH / shaders.constants.threadsInDiffusionBlockY));
-            reconstructPass.end();
+            //Ping pong the textures
+            const temp = this.diffusionLowFreqInComputeBindGroup;
+            this.diffusionLowFreqInComputeBindGroup = this.diffusionLowFreqOutComputeBindGroup;
+            this.diffusionLowFreqOutComputeBindGroup = temp;
+
         }
+        const reconstructPass = encoder.beginComputePass();
+        reconstructPass.setPipeline(this.reconstructHeightPipeline);
+        reconstructPass.setBindGroup(0, this.diffusionLowFreqInComputeBindGroup);
+        reconstructPass.setBindGroup(1, this.diffusionHeightComputeBindGroup);
+        reconstructPass.setBindGroup(2, this.diffusionHighFreqComputeBindGroup);
+        reconstructPass.setBindGroup(3, this.diffusionConstantsComputeBindGroup);
+        reconstructPass.dispatchWorkgroups(Math.ceil(this.heightW / shaders.constants.threadsInDiffusionBlockX), Math.ceil(this.heightH / shaders.constants.threadsInDiffusionBlockY));
+        reconstructPass.end();
         renderer.device.queue.submit([encoder.finish()]);
 
     }
