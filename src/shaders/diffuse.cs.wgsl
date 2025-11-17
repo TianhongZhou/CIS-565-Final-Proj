@@ -14,6 +14,9 @@ struct Heights {
 @group(2) @binding(1) var<uniform> gridScale: f32;
 @group(2) @binding(2) var terrainHeightIn: texture_storage_2d<r32float, read>;
 
+
+//Note: pos will never be less than 0, so there's a chance that the boundary isn't being handled correctly
+//However, since I'm subtracting 1, the theoretical behavior should make the int wrap, in which case it will for sure be higher than the size.
 fn calculateHeights(pos: vec2u) -> Heights {
     var heights: Heights; 
     let size = textureDimensions(diffusionIn);
