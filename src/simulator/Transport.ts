@@ -1,4 +1,4 @@
-import * as shaders from '../shaders/shaders';
+import * as shaders from "../shaders/shaders";
 
 export class TransportCS {
     private device: GPUDevice;
@@ -6,171 +6,139 @@ export class TransportCS {
     private height: number;
 
     private qTex: GPUTexture;
-    private uTex: GPUTexture;
-    private updatedQTex: GPUTexture;
+    private uXTex: GPUTexture;
+    private uYTex: GPUTexture;
+    private qNextTex: GPUTexture;
 
-    private ioRWLayout!: GPUBindGroupLayout;
-    private ioROLayout!: GPUBindGroupLayout;
-    private constsLayout!: GPUBindGroupLayout;
+    private ioBGL!: GPUBindGroupLayout;
+    private constBGL!: GPUBindGroupLayout;
 
-    private qROBindGroup!: GPUBindGroup;
-    private uROBindGroup!: GPUBindGroup;
-    private updatedQRWBindGroup!: GPUBindGroup;
-    private constsBindGroup!: GPUBindGroup;
+    private qBindGroup!: GPUBindGroup;
+    private constBindGroup!: GPUBindGroup;
 
     private dtBuffer!: GPUBuffer;
     private gridScaleBuffer!: GPUBuffer;
 
-    private transportPipeline!: GPUComputePipeline;
+    private pipeline!: GPUComputePipeline;
 
     constructor(
         device: GPUDevice,
         width: number,
         height: number,
         qTex: GPUTexture,
-        uTex: GPUTexture,
-        updatedQTex: GPUTexture
+        uXTex: GPUTexture,
+        uYTex: GPUTexture,
+        qNextTex: GPUTexture
     ) {
         this.device = device;
         this.width = width;
         this.height = height;
         this.qTex = qTex;
-        this.uTex = uTex;
-        this.updatedQTex = updatedQTex;
+        this.uXTex = uXTex;
+        this.uYTex = uYTex;
+        this.qNextTex = qNextTex;
 
-        this.createBuffersAndLayouts();
-        this.createBindGroups();
+        this.createResources();
         this.createPipeline();
     }
 
-    private createBuffersAndLayouts() {
+    private createResources() {
         this.dtBuffer = this.device.createBuffer({
             size: 4,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         });
+
         this.gridScaleBuffer = this.device.createBuffer({
             size: 4,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         });
 
-        this.device.queue.writeBuffer(this.dtBuffer, 0, new Float32Array([0.25]));
         this.device.queue.writeBuffer(this.gridScaleBuffer, 0, new Float32Array([1.0]));
 
-        // group(0): updated q (read-write)
-        this.ioRWLayout = this.device.createBindGroupLayout({
-            label: 'transport rw output',
+        this.ioBGL = this.device.createBindGroupLayout({
             entries: [
-                {
+                {   // q
                     binding: 0,
                     visibility: GPUShaderStage.COMPUTE,
-                    storageTexture: {
-                        access: 'read-write',
-                        format: 'r32float',
-                        viewDimension: '2d',
-                    },
+                    storageTexture: { format: "r32float", access: "read-only" },
                 },
-            ],
-        });
-
-        // group(1/2): q, u (read-only)
-        this.ioROLayout = this.device.createBindGroupLayout({
-            label: 'transport read-only input',
-            entries: [
-                {
-                    binding: 0,
+                {   // qNext
+                    binding: 1,
                     visibility: GPUShaderStage.COMPUTE,
-                    storageTexture: {
-                        access: 'read-only',
-                        format: 'r32float',
-                        viewDimension: '2d',
-                    },
+                    storageTexture: { format: "r32float", access: "write-only" },
                 },
-            ],
+                {   // uX
+                    binding: 2,
+                    visibility: GPUShaderStage.COMPUTE,
+                    storageTexture: { format: "r32float", access: "read-only" },
+                },
+                {   // uY
+                    binding: 3,
+                    visibility: GPUShaderStage.COMPUTE,
+                    storageTexture: { format: "r32float", access: "read-only" },
+                },
+            ]
         });
 
-        // group(3): dt, gridScale
-        this.constsLayout = this.device.createBindGroupLayout({
-            label: 'transport consts',
+        this.constBGL = this.device.createBindGroupLayout({
             entries: [
-                { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
-                { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
-            ],
-        });
-    }
-
-    private createBindGroups() {
-        this.qROBindGroup = this.device.createBindGroup({
-            layout: this.ioROLayout,
-            entries: [{ binding: 0, resource: this.qTex.createView() }],
+                { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
+                { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
+            ]
         });
 
-        this.uROBindGroup = this.device.createBindGroup({
-            layout: this.ioROLayout,
-            entries: [{ binding: 0, resource: this.uTex.createView() }],
+        this.qBindGroup = this.device.createBindGroup({
+            layout: this.ioBGL,
+            entries: [
+                { binding: 0, resource: this.qTex.createView() },
+                { binding: 1, resource: this.qNextTex.createView() },
+                { binding: 2, resource: this.uXTex.createView() },
+                { binding: 3, resource: this.uYTex.createView() },
+            ]
         });
 
-        this.updatedQRWBindGroup = this.device.createBindGroup({
-            layout: this.ioRWLayout,
-            entries: [{ binding: 0, resource: this.updatedQTex.createView() }],
-        });
-
-        this.constsBindGroup = this.device.createBindGroup({
-            layout: this.constsLayout,
+        this.constBindGroup = this.device.createBindGroup({
+            layout: this.constBGL,
             entries: [
                 { binding: 0, resource: { buffer: this.dtBuffer } },
                 { binding: 1, resource: { buffer: this.gridScaleBuffer } },
-            ],
+            ]
         });
     }
 
     private createPipeline() {
-        this.transportPipeline = this.device.createComputePipeline({
-            label: 'transport compute pipeline',
+        this.pipeline = this.device.createComputePipeline({
             layout: this.device.createPipelineLayout({
-                bindGroupLayouts: [
-                    this.ioRWLayout,     // group(0): updated q (RW)
-                    this.ioROLayout,     // group(1): q (RO)
-                    this.ioROLayout,     // group(2): u (RO)
-                    this.constsLayout,   // group(3): dt + gridScale
-                ],
+                bindGroupLayouts: [this.ioBGL, this.constBGL]
             }),
             compute: {
                 module: this.device.createShaderModule({
-                    code: shaders.transportComputeSrc,
+                    code: shaders.transportComputeSrc
                 }),
-                entryPoint: 'transport',
-            },
+                entryPoint: "transport"
+            }
         });
     }
 
     step(dt: number) {
-        this.device.queue.writeBuffer(
-            this.dtBuffer,
-            0,
-            new Float32Array([dt])
-        );
+        this.device.queue.writeBuffer(this.dtBuffer, 0, new Float32Array([dt]));
 
         const encoder = this.device.createCommandEncoder();
-
-        const wgX = Math.ceil(
-            this.width / shaders.constants.threadsInDiffusionBlockX
-        );
-        const wgY = Math.ceil(
-            this.height / shaders.constants.threadsInDiffusionBlockY
-        );
-
         const pass = encoder.beginComputePass();
-        pass.setPipeline(this.transportPipeline);
 
-        // Bind groups
-        pass.setBindGroup(0, this.updatedQRWBindGroup); // output q
-        pass.setBindGroup(1, this.qROBindGroup);         // input q
-        pass.setBindGroup(2, this.uROBindGroup);         // velocity field
-        pass.setBindGroup(3, this.constsBindGroup);      // dt, gridScale
+        pass.setPipeline(this.pipeline);
+        pass.setBindGroup(0, this.qBindGroup);
+        pass.setBindGroup(1, this.constBindGroup);
 
-        pass.dispatchWorkgroups(wgX, wgY);
+        // TODO : needs substeps here
+
+        const tgX = 8, tgY = 8;
+        pass.dispatchWorkgroups(
+            Math.ceil(this.width / tgX),
+            Math.ceil(this.height / tgY)
+        );
+
         pass.end();
-
         this.device.queue.submit([encoder.finish()]);
     }
 }
