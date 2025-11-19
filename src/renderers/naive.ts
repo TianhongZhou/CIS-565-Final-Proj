@@ -5,6 +5,7 @@ import { mat4, vec3 } from "wgpu-matrix";
 import { Camera, CameraUniforms } from '../stage/camera';
 import { DiffuseCS } from '../simulator/Diffuse';
 import { Simulator } from '../simulator/simulator';
+import { AiryWave } from '../simulator/AiryWave';
 
 export class NaiveRenderer extends renderer.Renderer {
     sceneUniformsBindGroupLayout: GPUBindGroupLayout;
@@ -66,6 +67,7 @@ export class NaiveRenderer extends renderer.Renderer {
     private diffuseFluxX: DiffuseCS;
     private diffuseFluxY: DiffuseCS;
     private simulator: Simulator;
+    private airyWave: AiryWave;
 
     // --- Reflection state (CPU & GPU resources) ---
     // Color texture where we render the mirrored scene (used later by water shader)
@@ -541,16 +543,17 @@ export class NaiveRenderer extends renderer.Renderer {
         this.updateTexture(lowArr, this.lowFreqTexturePingpong);
         this.updateTexture(highArr, this.highFreqTexture);
 
-        const fluxInit = new Float32Array(this.heightW * this.heightH);
-        this.updateTexture(fluxInit, this.qxTexture);
-        this.updateTexture(fluxInit, this.qxLowFreqTexture);
-        this.updateTexture(fluxInit, this.qxLowFreqTexturePingpong);
-        this.updateTexture(fluxInit, this.qxHighFreqTexture);
+        const fluxInitX = new Float32Array(this.heightW * this.heightH);
+        const fluxInitY = new Float32Array(this.heightW * this.heightH);
+        this.updateTexture(fluxInitX, this.qxTexture);
+        this.updateTexture(fluxInitX, this.qxLowFreqTexture);
+        this.updateTexture(fluxInitX, this.qxLowFreqTexturePingpong);
+        this.updateTexture(fluxInitX, this.qxHighFreqTexture);
 
-        this.updateTexture(fluxInit, this.qyTexture);
-        this.updateTexture(fluxInit, this.qyLowFreqTexture);
-        this.updateTexture(fluxInit, this.qyLowFreqTexturePingpong);
-        this.updateTexture(fluxInit, this.qyHighFreqTexture);
+        this.updateTexture(fluxInitY, this.qyTexture);
+        this.updateTexture(fluxInitY, this.qyLowFreqTexture);
+        this.updateTexture(fluxInitY, this.qyLowFreqTexturePingpong);
+        this.updateTexture(fluxInitY, this.qyHighFreqTexture);
 
         this.diffuseHeight = new DiffuseCS(
             renderer.device,
@@ -585,12 +588,54 @@ export class NaiveRenderer extends renderer.Renderer {
             this.terrainTexture
         );
 
+        /**
+         * Smooth depth field \bar{h}(x,y).
+         * In a full implementation, this should come from the low-frequency
+         * water height minus terrain, i.e. the actual water depth.
+         */
+        const smoothDepth = new Float32Array(this.heightW * this.heightH);
+        for (let i = 0; i < smoothDepth.length; ++i) {
+            // Element-wise difference: water height minus terrain height
+            const depth = lowArr[i] - terrainArr[i];
+            // Clamp to a small positive value to avoid zero / negative depth,
+            // which would cause problems in the dispersion relation.
+            smoothDepth[i] = Math.max(depth, 0.01);
+        }
+
+        /**
+         * Half-step high-frequency heights:
+         *   hHiMinus = h̃_{t-Δt/2}
+         *   hHiPlus  = h̃_{t+Δt/2}
+         * If you do not yet have half-step data, you can start by setting both
+         * to the same initial high-frequency field.
+         */
+        const hHiMinus = new Float32Array(highArr);
+        const hHiPlus  = new Float32Array(highArr);
+
+        /**
+         * Construct AiryWave using:
+         *   - 2D domain size (W, H)
+         *   - smoothDepth \bar{h}
+         *   - high-frequency height at t ± Δt/2
+         *   - initial high-frequency flux q̃_x
+         */
+        this.airyWave = new AiryWave(
+            this.heightW,
+            this.heightH,
+            smoothDepth,
+            hHiMinus,
+            hHiPlus,
+            fluxInitX,
+            fluxInitY
+        );
+
         this.simulator = new Simulator(
             this.heightW,
             this.heightH,
             this.diffuseHeight,
             this.diffuseFluxX,
-            this.diffuseFluxY
+            this.diffuseFluxY,
+            this.airyWave
         );
     }
 

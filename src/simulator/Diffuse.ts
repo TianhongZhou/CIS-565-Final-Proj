@@ -273,4 +273,46 @@ export class DiffuseCS {
         
         this.device.queue.submit([encoder.finish()]);
     }
+
+    async readHighFreqToCPU(): Promise<Float32Array> {
+        const width  = this.width;
+        const height = this.height;
+        const bytesPerPixel = 4;
+        const rowBytes      = width * bytesPerPixel;
+        const align         = 256;
+        const paddedRowBytes = Math.ceil(rowBytes / align) * align;
+
+        const readBuffer = this.device.createBuffer({
+            size: paddedRowBytes * height,
+            usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+        });
+
+        const encoder = this.device.createCommandEncoder();
+        encoder.copyTextureToBuffer(
+            { texture: this.highFreqTex },
+            { buffer: readBuffer, bytesPerRow: paddedRowBytes },
+            { width, height, depthOrArrayLayers: 1 },
+        );
+        this.device.queue.submit([encoder.finish()]);
+
+        await readBuffer.mapAsync(GPUMapMode.READ);
+        const mapped = readBuffer.getMappedRange();
+
+        const result = new Float32Array(width * height);
+        const srcU8  = new Uint8Array(mapped);
+        const rowBytesU8 = rowBytes; 
+
+        for (let y = 0; y < height; y++) {
+            const srcOffset = y * paddedRowBytes;
+            const row = new Float32Array(
+                srcU8.buffer,
+                srcU8.byteOffset + srcOffset,
+                width
+            );
+            result.set(row, y * width);
+        }
+
+        readBuffer.unmap();
+        return result;
+    }
 }

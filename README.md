@@ -15,3 +15,7 @@
 - Rendering
     - Semi-transparent water rendering with alpha blending
     - Planar reflection on the water surface using a mirrored camera
+
+### Reference
+
+- [Web FFT](https://github.com/IQEngine/WebFFT?tab=readme-ov-file)
