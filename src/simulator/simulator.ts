@@ -1,5 +1,5 @@
 import { DiffuseCS } from "./Diffuse";
-import { AiryWave } from "./AiryWave";
+import { AiryWaveCS } from "./AiryWaveCS";
 
 export class Simulator {
   W: number;
@@ -8,7 +8,7 @@ export class Simulator {
   private diffuseFluxX: DiffuseCS;
   private diffuseFluxY: DiffuseCS;
 
-  private airy: AiryWave;
+  private airyCS: AiryWaveCS;
 
   constructor(
     W: number,
@@ -16,24 +16,20 @@ export class Simulator {
     diffuseHeight: DiffuseCS,
     diffuseFluxX: DiffuseCS,
     diffuseFluxY: DiffuseCS,
-    airy: AiryWave
+    airy: AiryWaveCS
   ) {
     this.W = W;
     this.H = H;
     this.diffuseHeight = diffuseHeight;
     this.diffuseFluxX  = diffuseFluxX;
     this.diffuseFluxY  = diffuseFluxY;
-    this.airy = airy;
+    this.airyCS = airy;
   }
 
   async simulateDecompose(dt: GLfloat) {
     this.diffuseHeight.step(dt);
     this.diffuseFluxX.step(dt);
     this.diffuseFluxY.step(dt);
-
-    const hHi = await this.diffuseHeight.readHighFreqToCPU();
-    // TODO: need to pass t-Δt/2,t+Δt/2 into airy
-    this.airy.setHeightHalfSteps(hHi, hHi);
   }
 
   simulateBulk(dt: GLfloat) {
@@ -41,7 +37,7 @@ export class Simulator {
   }
 
   simulateAiry(dt: GLfloat) {
-    this.airy.step(dt);
+    this.airyCS.step(dt);
   }
 
   transportSurface(dt: GLfloat){

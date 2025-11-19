@@ -5,7 +5,8 @@ import { mat4, vec3 } from "wgpu-matrix";
 import { Camera, CameraUniforms } from '../stage/camera';
 import { DiffuseCS } from '../simulator/Diffuse';
 import { Simulator } from '../simulator/simulator';
-import { AiryWave } from '../simulator/AiryWave';
+// import { AiryWave } from '../simulator/AiryWave';
+import { AiryWaveCS } from '../simulator/AiryWaveCS';
 
 export class NaiveRenderer extends renderer.Renderer {
     sceneUniformsBindGroupLayout: GPUBindGroupLayout;
@@ -67,7 +68,8 @@ export class NaiveRenderer extends renderer.Renderer {
     private diffuseFluxX: DiffuseCS;
     private diffuseFluxY: DiffuseCS;
     private simulator: Simulator;
-    private airyWave: AiryWave;
+    // private airyWave: AiryWave;
+    private airyWaveCS: AiryWaveCS;
 
     // --- Reflection state (CPU & GPU resources) ---
     // Color texture where we render the mirrored scene (used later by water shader)
@@ -602,31 +604,14 @@ export class NaiveRenderer extends renderer.Renderer {
             smoothDepth[i] = Math.max(depth, 0.01);
         }
 
-        /**
-         * Half-step high-frequency heights:
-         *   hHiMinus = h̃_{t-Δt/2}
-         *   hHiPlus  = h̃_{t+Δt/2}
-         * If you do not yet have half-step data, you can start by setting both
-         * to the same initial high-frequency field.
-         */
-        const hHiMinus = new Float32Array(highArr);
-        const hHiPlus  = new Float32Array(highArr);
-
-        /**
-         * Construct AiryWave using:
-         *   - 2D domain size (W, H)
-         *   - smoothDepth \bar{h}
-         *   - high-frequency height at t ± Δt/2
-         *   - initial high-frequency flux q̃_x
-         */
-        this.airyWave = new AiryWave(
+        this.airyWaveCS = new AiryWaveCS(
+            renderer.device,
             this.heightW,
             this.heightH,
-            smoothDepth,
-            hHiMinus,
-            hHiPlus,
-            fluxInitX,
-            fluxInitY
+            this.highFreqTexture,
+            this.qxHighFreqTexture,
+            this.qyHighFreqTexture,
+            smoothDepth
         );
 
         this.simulator = new Simulator(
@@ -635,7 +620,7 @@ export class NaiveRenderer extends renderer.Renderer {
             this.diffuseHeight,
             this.diffuseFluxX,
             this.diffuseFluxY,
-            this.airyWave
+            this.airyWaveCS
         );
     }
 
