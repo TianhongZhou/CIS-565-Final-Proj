@@ -1,4 +1,5 @@
 import { DiffuseCS } from "./Diffuse";
+import { TransportCS } from "./Transport";
 
 export class Simulator {
   W: number;
@@ -7,18 +8,29 @@ export class Simulator {
   private diffuseFluxX: DiffuseCS;
   private diffuseFluxY: DiffuseCS;
 
+  private transportFlowRate: TransportCS;
+  private transportHeight: TransportCS;
+
   constructor(
     W: number,
     H: number,
+
     diffuseHeight: DiffuseCS,
     diffuseFluxX: DiffuseCS,
-    diffuseFluxY: DiffuseCS
+    diffuseFluxY: DiffuseCS,
+
+    transportFlowRate: TransportCS,
+    transportHeight: TransportCS,
   ) {
     this.W = W;
     this.H = H;
     this.diffuseHeight = diffuseHeight;
     this.diffuseFluxX  = diffuseFluxX;
     this.diffuseFluxY  = diffuseFluxY;
+
+    // TODO: transport class needs velocity here
+    this.transportFlowRate = transportFlowRate;
+    this.transportHeight = transportHeight;
   }
 
   simulateDecompose(dt: GLfloat) {
@@ -36,7 +48,9 @@ export class Simulator {
   }
 
   transportSurface(dt: GLfloat){
-
+    // compute velocity
+    this.transportFlowRate.step(dt);
+    this.transportHeight.step(dt);
   }
 
 
