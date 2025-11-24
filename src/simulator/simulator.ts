@@ -1,5 +1,7 @@
 import { DiffuseCS } from "./Diffuse";
 import { AiryWaveCS } from "./AiryWaveCS";
+import { TransportCS } from "./Transport";
+import { VelocityCS } from "./Velocity";
 
 export class Simulator {
   W: number;
@@ -7,26 +9,36 @@ export class Simulator {
   private diffuseHeight: DiffuseCS;
   private diffuseFluxX: DiffuseCS;
   private diffuseFluxY: DiffuseCS;
-
+  private velocityCS: VelocityCS;
   private airyCS: AiryWaveCS;
+  private transportFlowRate: TransportCS;
+  private transportHeight: TransportCS;
 
   constructor(
     W: number,
     H: number,
+
     diffuseHeight: DiffuseCS,
     diffuseFluxX: DiffuseCS,
     diffuseFluxY: DiffuseCS,
-    airy: AiryWaveCS
+    velocity: VelocityCS,
+    airy: AiryWaveCS,
+    transportFlowRate: TransportCS,
+    transportHeight: TransportCS,
   ) {
     this.W = W;
     this.H = H;
     this.diffuseHeight = diffuseHeight;
     this.diffuseFluxX  = diffuseFluxX;
     this.diffuseFluxY  = diffuseFluxY;
+    this.velocityCS = velocity;
     this.airyCS = airy;
+    // TODO: transport class needs velocity here
+    this.transportFlowRate = transportFlowRate;
+    this.transportHeight = transportHeight;
   }
 
-  async simulateDecompose(dt: GLfloat) {
+  simulateDecompose(dt: GLfloat) {
     this.diffuseHeight.step(dt);
     this.diffuseFluxX.step(dt);
     this.diffuseFluxY.step(dt);
@@ -41,16 +53,20 @@ export class Simulator {
   }
 
   transportSurface(dt: GLfloat){
-
+    this.velocityCS.step();
+    this.transportFlowRate.step(dt);
+    this.transportHeight.step(dt);
   }
 
 
-  async simulate(dt: GLfloat) {
+  simulate(dt: GLfloat) {
 
     //Run this 128 times, making sure to clamp dt to 0.25
     const clampedDt = Math.min(dt, 0.25);
-    await this.simulateDecompose(clampedDt);
+    this.simulateDecompose(clampedDt);
 
     this.simulateAiry(clampedDt);
+
+    this.transportSurface(clampedDt);
   }
 }

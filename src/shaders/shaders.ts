@@ -11,6 +11,8 @@ import waterFragRaw from './water.fs.wgsl?raw';
 import diffuseComputeRaw from './diffuse.cs.wgsl?raw';
 import reconstructHeightRaw from './reconstructHeight.wgsl?raw';
 import airyWaveComputeRaw from './airywave.cs.wgsl?raw';
+import transportComputeRaw from './transport.cs.wgsl?raw';
+import velocityComputeRaw from './velocity.cs.wgsl?raw';
 
 // CONSTANTS (for use in shaders)
 export const constants = {
@@ -45,3 +47,5 @@ export const waterFragSrc: string = processShaderRaw(waterFragRaw);
 export const diffuseComputeSrc: string = processShaderRaw(diffuseComputeRaw);
 export const reconstructHeightSrc: string = processShaderRaw(reconstructHeightRaw);
 export const airyWaveComputeSrc: string = processShaderRaw(airyWaveComputeRaw);
+export const transportComputeSrc: string = processShaderRaw(transportComputeRaw);
+export const velocityComputeSrc: string = processShaderRaw(velocityComputeRaw);

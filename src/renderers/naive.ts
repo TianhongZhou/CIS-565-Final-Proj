@@ -7,6 +7,8 @@ import { DiffuseCS } from '../simulator/Diffuse';
 import { Simulator } from '../simulator/simulator';
 // import { AiryWave } from '../simulator/AiryWave';
 import { AiryWaveCS } from '../simulator/AiryWaveCS';
+import { TransportCS } from '../simulator/Transport';
+import { VelocityCS } from '../simulator/Velocity';
 
 export class NaiveRenderer extends renderer.Renderer {
     sceneUniformsBindGroupLayout: GPUBindGroupLayout;
@@ -58,6 +60,15 @@ export class NaiveRenderer extends renderer.Renderer {
     qyLowFreqTexturePingpong: GPUTexture;
     qyHighFreqTexture: GPUTexture;
 
+    // --- Velocity & transport lambda texture ---
+    // u = (u_x, u_y)，cell-centered for now
+    private uXTex: GPUTexture;
+    private uYTex: GPUTexture;
+
+    // Transport output: lambda（ping-pong）
+    private qLowTransportTex: GPUTexture;   // λ=q 
+    private hLowTransportTex: GPUTexture;   // λ=h
+
     // --- Upload helpers for writeTexture() row alignment ---
     private rowBytes = 0;
     private paddedBytesPerRow = 0;
@@ -67,9 +78,18 @@ export class NaiveRenderer extends renderer.Renderer {
     private diffuseHeight: DiffuseCS;
     private diffuseFluxX: DiffuseCS;
     private diffuseFluxY: DiffuseCS;
+
+    private velocityCS: VelocityCS;
+
     private simulator: Simulator;
+
+    // AiryWave compute
     // private airyWave: AiryWave;
     private airyWaveCS: AiryWaveCS;
+
+    // Transport
+    private transportFlowRate: TransportCS;
+    private transportHeight: TransportCS;
 
     // --- Reflection state (CPU & GPU resources) ---
     // Color texture where we render the mirrored scene (used later by water shader)
@@ -328,6 +348,29 @@ export class NaiveRenderer extends renderer.Renderer {
             usage: texUsage,
         });
 
+        // velocity u & transport output λ texture
+        this.uXTex = renderer.device.createTexture({
+            size: [this.heightW, this.heightH],   // Simple version for now
+            format: "r32float",
+            usage: texUsage,
+        });
+        this.uYTex = renderer.device.createTexture({
+            size: [this.heightW, this.heightH],
+            format: "r32float",
+            usage: texUsage,
+        });
+
+        this.qLowTransportTex = renderer.device.createTexture({
+            size: [this.heightW, this.heightH],
+            format: "r32float",
+            usage: texUsage,
+        });
+        this.hLowTransportTex = renderer.device.createTexture({
+            size: [this.heightW, this.heightH],
+            format: "r32float",
+            usage: texUsage,
+        });
+
         // Non-filtering sampler (required for unfilterable formats like R32Float).
         this.heightSampler = renderer.device.createSampler({
             minFilter: "nearest",
@@ -556,6 +599,9 @@ export class NaiveRenderer extends renderer.Renderer {
         this.updateTexture(fluxInitY, this.qyLowFreqTexture);
         this.updateTexture(fluxInitY, this.qyLowFreqTexturePingpong);
         this.updateTexture(fluxInitY, this.qyHighFreqTexture);
+        
+        this.updateTexture(fluxInitX, this.uXTex);
+        this.updateTexture(fluxInitY, this.uYTex);
 
         this.diffuseHeight = new DiffuseCS(
             renderer.device,
@@ -590,6 +636,17 @@ export class NaiveRenderer extends renderer.Renderer {
             this.terrainTexture
         );
 
+        this.velocityCS = new VelocityCS(
+            renderer.device,
+            this.heightW,
+            this.heightH,
+            this.lowFreqTexture,      // h_low
+            this.qxLowFreqTexture,    // qx_low
+            this.qyLowFreqTexture,    // qy_low
+            this.uXTex,
+            this.uYTex
+        );
+
         /**
          * Smooth depth field \bar{h}(x,y).
          * In a full implementation, this should come from the low-frequency
@@ -614,13 +671,42 @@ export class NaiveRenderer extends renderer.Renderer {
             smoothDepth
         );
 
+        this.transportFlowRate = new TransportCS(
+            renderer.device,
+            this.heightW,
+            this.heightH,
+            this.qxLowFreqTexture,  
+            this.uXTex,
+            this.uYTex,
+            this.qLowTransportTex,  
+            'q',
+            0.25,                    
+            1.0                    
+        );
+
+        this.transportHeight = new TransportCS(
+            renderer.device,
+            this.heightW,
+            this.heightH,
+            this.lowFreqTexture,    
+            this.uXTex,
+            this.uYTex,
+            this.hLowTransportTex, 
+            'h',
+            0.25,
+            1.0
+        );
+
         this.simulator = new Simulator(
             this.heightW,
             this.heightH,
             this.diffuseHeight,
             this.diffuseFluxX,
             this.diffuseFluxY,
-            this.airyWaveCS
+            this.velocityCS,
+            this.airyWaveCS,
+            this.transportFlowRate,
+            this.transportHeight
         );
     }
 
