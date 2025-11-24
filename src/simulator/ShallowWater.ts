@@ -550,6 +550,7 @@ export class ShallowWater {
             initialVelocityYPass.dispatchWorkgroups(wgX, wgY);
             initialVelocityYPass.end();
         }
+        
         //Copy Texture(height -> previousHeight)
         
         
@@ -575,6 +576,7 @@ export class ShallowWater {
             shallowHeightPass.dispatchWorkgroups(wgX, wgY);
             shallowHeightPass.end();
         }
+        
         //Shallow Velocity X Step 1 and 2
         {
             const shallowVelocityXStep1Pass = encoder.beginComputePass();

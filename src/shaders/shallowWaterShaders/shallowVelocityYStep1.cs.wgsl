@@ -19,24 +19,33 @@ fn upWindHeight(vel: f32) -> u32 {
     }
 
 }
+fn clampI(v: i32, a: i32, b: i32) -> i32 {
+  if (v < a) { return a; }
+  if (v > b) { return b; }
+  return v;
+}
+
 
 //Need to verify that the behavior here is correct, but should probably use this.
-fn sampleTextures(tex: texture_storage_2d<r32float, read_write>, pos: vec2u, size: vec2u) -> f32 {
+fn sampleTextures(tex: texture_storage_2d<r32float, read_write>, pos: vec2i, size: vec2u, isHeight: bool) -> f32 {
     var value: f32;
     //Note: unecessary to check for negative on unsigned ints, it's just a small precaution. Negatives should wrap around to large positive numbers.
-    if(pos.x >= size.x || pos.y >= size.y || pos.x < 0 || pos.y < 0) {
-        value = 0.001;
+    if(pos.x >= i32(size.x) || pos.y >= i32(size.y) || pos.x < 0 || pos.y < 0) {
+        if(isHeight) {
+            value = 0.0;
+        } else {
+            value = 0.0;
+        }
        
     }
     else
     {
-       value = textureLoad(tex, vec2u(pos.x, pos.y)).x;
+       value = textureLoad(tex, pos).x;
     }
     return value;
     
 
 }
-
 @compute
 @workgroup_size(${threadsInDiffusionBlockX}, ${threadsInDiffusionBlockY}, 1)
 fn shallowVelocityYStep1(@builtin(global_invocation_id) globalIdx: vec3u) {
@@ -46,13 +55,15 @@ fn shallowVelocityYStep1(@builtin(global_invocation_id) globalIdx: vec3u) {
         return;
     }
     
-    let velYUp = sampleTextures(velocityYIn, vec2u(globalIdx.x, globalIdx.y), size);
-    let velYUpLeft = sampleTextures(velocityYIn, vec2u(globalIdx.x - 1, globalIdx.y), size);
+    let ix = i32(globalIdx.x);
+    let iy = i32(globalIdx.y);
+    
+    let velYUp = textureLoad(velocityYIn, vec2i(ix, iy)).x;
+    let velYUpLeft = textureLoad(velocityYIn, vec2i(clampI(ix - 1, 0, i32(size.x) - 1), iy)).x;
 
-    let fluxXLeft = sampleTextures(fluxXIn, vec2u(globalIdx.x - 1, globalIdx.y), size);
+    let fluxXLeft = textureLoad(fluxXIn, vec2i(clampI(ix - 1, 0, i32(size.x) - 1), iy)).x;
 
-    let heightUp = sampleTextures(heightIn, vec2u(globalIdx.x, globalIdx.y + upWindHeight(velYUp)), size);
-
+    let heightUp = textureLoad(heightIn, vec2i(ix, clampI(iy + i32(upWindHeight(velYUp)), 0, i32(size.y) - 1))).x;
     let changeInVelocity = -(fluxXLeft * (velYUp - velYUpLeft)) / (gridScale * heightUp);
     
     //Assuming this is the first step. Subsequent steps will add to this value, so will need to both read and write.

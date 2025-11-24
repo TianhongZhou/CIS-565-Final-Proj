@@ -19,23 +19,34 @@ fn upWindHeight(vel: f32) -> u32 {
     }
 
 }
+
+fn clampI(v: i32, a: i32, b: i32) -> i32 {
+  if (v < a) { return a; }
+  if (v > b) { return b; }
+  return v;
+}
+
+
 //Need to verify that the behavior here is correct, but should probably use this.
-fn sampleTextures(tex: texture_storage_2d<r32float, read_write>, pos: vec2u, size: vec2u) -> f32 {
+fn sampleTextures(tex: texture_storage_2d<r32float, read_write>, pos: vec2i, size: vec2u, isHeight: bool) -> f32 {
     var value: f32;
     //Note: unecessary to check for negative on unsigned ints, it's just a small precaution. Negatives should wrap around to large positive numbers.
-    if(pos.x >= size.x || pos.y >= size.y || pos.x < 0 || pos.y < 0) {
-        value = 0.001;
+    if(pos.x >= i32(size.x) || pos.y >= i32(size.y) || pos.x < 0 || pos.y < 0) {
+        if(isHeight) {
+            value = 0.0;
+        } else {
+            value = 0.0;
+        }
        
     }
     else
     {
-       value = textureLoad(tex, vec2u(pos.x, pos.y)).x;
+       value = textureLoad(tex, pos).x;
     }
     return value;
     
 
 }
-
 
 
 
@@ -48,18 +59,18 @@ fn shallowVelocityXStep2(@builtin(global_invocation_id) globalIdx: vec3u) {
         return;
     }
 
-    let velXRight = sampleTextures(velocityXIn, vec2u(globalIdx.x, globalIdx.y), size);
-    let velXDownRight = sampleTextures(velocityXIn, vec2u(globalIdx.x, globalIdx.y - 1), size);
+    let ix = i32(globalIdx.x);
+    let iy = i32(globalIdx.y);
+
+    let velXRight = textureLoad(velocityXIn, vec2i(ix, iy)).x;
+    let velXDownRight = textureLoad(velocityXIn, vec2i(ix, clampI(iy - 1, 0, i32(size.y) - 1))).x;
     
     
-    let fluxYDown = sampleTextures(fluxYIn, vec2u(globalIdx.x, globalIdx.y - 1), size);
-
+    let fluxYDown = textureLoad(fluxYIn, vec2i(ix, clampI(iy - 1, 0, i32(size.y) - 1))).x;
     
-    let heightStaggeredRight = sampleTextures(heightIn, vec2u(globalIdx.x + upWindHeight(velXRight), globalIdx.y), size);
-    let heightCenter = sampleTextures(heightIn, vec2u(globalIdx.x, globalIdx.y), size);
-    let heightRight = sampleTextures(heightIn, vec2u(globalIdx.x + 1, globalIdx.y), size);
-
-
+    let heightStaggeredRight = textureLoad(heightIn, vec2i(clampI(ix + i32(upWindHeight(velXRight)), 0, i32(size.x) - 1), iy)).x;
+    let heightCenter = textureLoad(heightIn, vec2i(ix, iy)).x;
+    let heightRight = textureLoad(heightIn, vec2i(clampI(ix + 1, 0, i32(size.x) - 1), iy)).x;
     let gravity = 9.80665;
 
     var changeInVelocity = -(fluxYDown * (velXRight - velXDownRight)) / (gridScale * heightStaggeredRight) - gravity * (heightRight - heightCenter) / gridScale;

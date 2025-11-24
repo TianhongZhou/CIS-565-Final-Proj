@@ -12,6 +12,7 @@ import { Stage } from './stage/stage';
 import { constants } from './shaders/shaders';
 
 import { DiffuseCS } from './simulator/Diffuse';
+import { ShallowRenderer } from './renderers/ShallowRender';
 
 await initWebGPU();
 setupLoaders();
@@ -30,10 +31,10 @@ const gui = new GUI();
 const stage = new Stage(scene, camera, stats);
 
 // NaiveRenderer
-var renderer: NaiveRenderer | undefined;
+var renderer: ShallowRenderer | undefined;
 
 renderer?.stop();
-renderer = new NaiveRenderer(stage);
+renderer = new ShallowRenderer(stage);
 
 // // DiffuseRender
 // var renderer: DiffuseRenderer | undefined;
