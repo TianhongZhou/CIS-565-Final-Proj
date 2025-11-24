@@ -1,3 +1,550 @@
+
+import * as shaders from "../shaders/shaders";
+
+export class FlowRecombineCS {
+    private device: GPUDevice;
+    private width: number;
+    private height: number;
+
+
+    private heightMap: GPUTexture; 
+    private previousHeightMap: GPUTexture;
+    private fluxXMap: GPUTexture;
+    private fluxYMap: GPUTexture;
+    private velocityXMap: GPUTexture;
+    private velocityYMap: GPUTexture;
+    private changeInVelocityXMap: GPUTexture;
+    private changeInVelocityYMap: GPUTexture;
+
+
+    private ioBindGroupLayout!: GPUBindGroupLayout;
+    private constsBindGroupLayout!: GPUBindGroupLayout;
+
+    private heightBindGroup!: GPUBindGroup;
+    private previousHeightBindGroup!: GPUBindGroup;
+    private fluxXBindGroup!: GPUBindGroup;
+    private fluxYBindGroup!: GPUBindGroup;
+    private velocityXBindGroup!: GPUBindGroup;
+    private velocityYBindGroup!: GPUBindGroup;
+    private changeInVelocityXBindGroup!: GPUBindGroup;
+    private changeInVelocityYBindGroup!: GPUBindGroup;
+    private constsBindGroup!: GPUBindGroup;
+
+    private timeStepBuffer!: GPUBuffer;
+    private gridScaleBuffer!: GPUBuffer;
+
+
+    private initialVelocityXPipeline!: GPUComputePipeline;
+    private initialVelocityYPipeline!: GPUComputePipeline;
+
+    private shallowHeightPipeline!: GPUComputePipeline;
+    private shallowVelocityXStep1Pipeline!: GPUComputePipeline;
+    private shallowVelocityXStep2Pipeline!: GPUComputePipeline;
+
+    private shallowVelocityYStep1Pipeline!: GPUComputePipeline;
+    private shallowVelocityYStep2Pipeline!: GPUComputePipeline;
+
+    private updateVelocityAndFluxXPipeline!: GPUComputePipeline;
+    private updateVelocityAndFluxYPipeline!: GPUComputePipeline;
+
+
+    constructor(
+        device: GPUDevice,
+        width: number,
+        height: number,
+        heightTex: GPUTexture,  
+        previousHeightTex: GPUTexture,     
+        fluxXTex: GPUTexture,     
+        fluxYTex: GPUTexture, 
+        velocityXTex: GPUTexture,      
+        velocityYTex: GPUTexture,     
+        changeInVelocityXTex: GPUTexture,      
+        changeInVelocityYTex: GPUTexture,     
+    ) {
+        this.device   = device;
+        this.width    = width;
+        this.height   = height;
+        this.heightMap   = heightTex;
+        this.previousHeightMap = previousHeightTex;
+        this.fluxXMap = fluxXTex;
+        this.fluxYMap = fluxYTex;
+        this.velocityXMap = velocityXTex;
+        this.velocityYMap  = velocityYTex;
+        this.changeInVelocityXMap = changeInVelocityXTex;
+        this.changeInVelocityYMap = changeInVelocityYTex;
+
+        this.createBuffersAndLayouts();
+        this.createBindGroups();
+        this.createPipeline();
+    }
+
+    private createBuffersAndLayouts() {
+        this.timeStepBuffer = this.device.createBuffer({
+            size: 4,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        });
+        this.gridScaleBuffer = this.device.createBuffer({
+            size: 4,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        });
+
+        this.device.queue.writeBuffer(
+            this.timeStepBuffer,
+            0,
+            new Float32Array([0.25])
+        );
+        this.device.queue.writeBuffer(
+            this.gridScaleBuffer,
+            0,
+            new Float32Array([1.0])
+        );
+
+        // Read write storage textures
+        this.ioBindGroupLayout = this.device.createBindGroupLayout({
+            label: 'diffusion IO BGL',
+            entries: [
+                {
+                    binding: 0,
+                    visibility: GPUShaderStage.COMPUTE,
+                    storageTexture: {
+                        format: 'r32float',
+                        access: 'read-write',
+                        viewDimension: '2d',
+                    },
+                },
+            ],
+        });
+
+        // Constants
+        this.constsBindGroupLayout = this.device.createBindGroupLayout({
+            label: 'diffusion consts BGL',
+            entries: [
+                {
+                    binding: 0,
+                    visibility: GPUShaderStage.COMPUTE,
+                    buffer: { type: 'uniform' },   // timeStep
+                },
+                {
+                    binding: 1,
+                    visibility: GPUShaderStage.COMPUTE,
+                    buffer: { type: 'uniform' },   // gridScale
+                }
+            ],
+        });
+    }
+
+    private createBindGroups() {
+
+
+        
+
+
+        this.heightBindGroup = this.device.createBindGroup({
+            layout: this.ioBindGroupLayout,
+            entries: [
+                {
+                    binding: 0,
+                    resource: this.heightMap.createView(),
+                },
+            ],
+        });
+
+        this.previousHeightBindGroup = this.device.createBindGroup({
+            layout: this.ioBindGroupLayout,
+            entries: [
+                {
+                    binding: 0,
+                    resource: this.previousHeightMap.createView(),
+                },
+            ],
+        });
+        
+        this.fluxXBindGroup = this.device.createBindGroup({
+            layout: this.ioBindGroupLayout,
+            entries: [
+                {
+                    binding: 0,
+                    resource: this.fluxXMap.createView(),
+                },
+            ],
+        });
+        
+        
+        this.fluxYBindGroup = this.device.createBindGroup({
+            layout: this.ioBindGroupLayout,
+            entries: [
+                {
+                    binding: 0,
+                    resource: this.fluxYMap.createView(),
+                },
+            ],
+        });
+
+        this.velocityXBindGroup = this.device.createBindGroup({
+            layout: this.ioBindGroupLayout,
+            entries: [
+                {
+                    binding: 0,
+                    resource: this.velocityXMap.createView(),
+                },
+            ],
+        });
+        
+        
+        this.velocityYBindGroup = this.device.createBindGroup({
+            layout: this.ioBindGroupLayout,
+            entries: [
+                {
+                    binding: 0,
+                    resource: this.velocityYMap.createView(),
+                },
+            ],
+        });
+
+         this.changeInVelocityXBindGroup = this.device.createBindGroup({
+            layout: this.ioBindGroupLayout,
+            entries: [
+                {
+                    binding: 0,
+                    resource: this.changeInVelocityXMap.createView(),
+                },
+            ],
+        });
+        
+        
+        this.changeInVelocityYBindGroup = this.device.createBindGroup({
+            layout: this.ioBindGroupLayout,
+            entries: [
+                {
+                    binding: 0,
+                    resource: this.changeInVelocityYMap.createView(),
+                },
+            ],
+        });
+
+
+
+
+        this.constsBindGroup = this.device.createBindGroup({
+            layout: this.constsBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: this.timeStepBuffer } },
+                { binding: 1, resource: { buffer: this.gridScaleBuffer } }
+            ],
+        });
+    }
+
+    private createPipeline() {
+
+
+
+        this.initialVelocityXPipeline = this.device.createComputePipeline({
+            label: 'Shallow Initial Velocity X Pipeline',
+            layout: this.device.createPipelineLayout({
+                bindGroupLayouts: [
+                    this.ioBindGroupLayout,       // group(0)  previousHeight
+                    this.ioBindGroupLayout,       // group(1)  fluxX
+                    this.ioBindGroupLayout,       // group(2)  velocityX
+                ],
+            }),
+            compute: {
+                module: this.device.createShaderModule({
+                    label: 'ShallowInitialVelocityX',
+                    code: shaders.computeInitialVelocityXSrc,
+                }),
+                entryPoint: 'computeInitialVelocityX',
+            },
+        });
+        this.initialVelocityYPipeline = this.device.createComputePipeline({
+            label: 'Shallow Initial Velocity Y Pipeline',
+            layout: this.device.createPipelineLayout({
+                bindGroupLayouts: [
+                    this.ioBindGroupLayout,       // group(0)  previousHeight
+                    this.ioBindGroupLayout,       // group(1)  fluxY
+                    this.ioBindGroupLayout,       // group(2)  velocityY
+                ],
+            }),
+            compute: {
+                module: this.device.createShaderModule({
+                    label: 'ShallowInitialVelocityY',
+                    code: shaders.computeInitialVelocityYSrc,
+                }),
+                entryPoint: 'computeInitialVelocityY',
+            },
+        });
+
+        this.shallowHeightPipeline = this.device.createComputePipeline({
+            label: 'Shallow Height Pipeline',
+            layout: this.device.createPipelineLayout({
+                bindGroupLayouts: [
+                    this.ioBindGroupLayout,       // group(0)  heightIn
+                    this.ioBindGroupLayout,       // group(1)  velocityXIn
+                    this.ioBindGroupLayout,       // group(2)  velocityYIn
+                    this.ioBindGroupLayout,       // group(3)  heightOut
+                    this.constsBindGroupLayout,   // group(4)  dt, gridScale
+                ],
+            }),
+            compute: {
+                module: this.device.createShaderModule({
+                    label: 'ShallowHeight',
+                    code: shaders.shallowHeightSrc,
+                }),
+                entryPoint: 'shallowHeight',
+            },
+        });
+        this.shallowVelocityXStep1Pipeline = this.device.createComputePipeline({
+            label: 'Shallow Velocity X Step 1 Pipeline',
+            layout: this.device.createPipelineLayout({
+                bindGroupLayouts: [
+                    this.ioBindGroupLayout,       // group(0)  velocityX
+                    this.ioBindGroupLayout,       // group(1)  fluxX
+                    this.ioBindGroupLayout,       // group(2)  previousHeight
+                    this.ioBindGroupLayout,       // group(3)  changeInVelocityX
+                    this.constsBindGroupLayout,   // group(4)  dt, gridScale
+                ],
+            }),
+            compute: {
+                module: this.device.createShaderModule({
+                    label: 'ShallowVelocityXStep1',
+                    code: shaders.shallowVelocityXStep1Src,
+                }),
+                entryPoint: 'shallowVelocityXStep1',
+            },
+        });
+        this.shallowVelocityXStep2Pipeline = this.device.createComputePipeline({
+            label: 'Shallow Velocity X Step 2 Pipeline',
+            layout: this.device.createPipelineLayout({
+                bindGroupLayouts: [
+                    this.ioBindGroupLayout,       // group(0)  velocityX
+                    this.ioBindGroupLayout,       // group(1)  fluxY
+                    this.ioBindGroupLayout,       // group(2)  previousHeight
+                    this.ioBindGroupLayout,       // group(3)  changeInVelocityX
+                    this.constsBindGroupLayout,   // group(4)  dt, gridScale
+                ],
+            }),
+            compute: {
+                module: this.device.createShaderModule({
+                    label: 'ShallowVelocityXStep2',
+                    code: shaders.shallowVelocityXStep2Src,
+                }),
+                entryPoint: 'shallowVelocityXStep2',
+            },
+        });
+        this.shallowVelocityYStep1Pipeline = this.device.createComputePipeline({
+            label: 'Shallow Velocity Y Step 1 Pipeline',
+            layout: this.device.createPipelineLayout({
+                bindGroupLayouts: [
+                    this.ioBindGroupLayout,       // group(0)  velocityY
+                    this.ioBindGroupLayout,       // group(1)  fluxX
+                    this.ioBindGroupLayout,       // group(2)  previousHeight
+                    this.ioBindGroupLayout,       // group(3)  changeInVelocityY
+                    this.constsBindGroupLayout,   // group(4)  dt, gridScale
+                ],
+            }),
+            compute: {
+                module: this.device.createShaderModule({
+                    label: 'ShallowVelocityYStep1',
+                    code: shaders.shallowVelocityYStep1Src,
+                }),
+                entryPoint: 'shallowVelocityYStep1',
+            },
+        });
+        this.shallowVelocityYStep2Pipeline = this.device.createComputePipeline({
+            label: 'Shallow Velocity Y Step 2 Pipeline',
+            layout: this.device.createPipelineLayout({
+                bindGroupLayouts: [
+                    this.ioBindGroupLayout,       // group(0)  velocityY
+                    this.ioBindGroupLayout,       // group(1)  fluxY
+                    this.ioBindGroupLayout,       // group(2)  previousHeight
+                    this.ioBindGroupLayout,       // group(3)  changeInVelocityY
+                    this.constsBindGroupLayout,   // group(4)  dt, gridScale
+                ],
+            }),
+            compute: {
+                module: this.device.createShaderModule({
+                    label: 'ShallowVelocityYStep2',
+                    code: shaders.shallowVelocityYStep2Src,
+                }),
+                entryPoint: 'shallowVelocityYStep2',
+            },
+        });
+        this.updateVelocityAndFluxXPipeline = this.device.createComputePipeline({
+            label: 'Update Velocity And Flux X Pipeline',
+            layout: this.device.createPipelineLayout({
+                bindGroupLayouts: [
+                    this.ioBindGroupLayout,       // group(0)  changeInVelocityX
+                    this.ioBindGroupLayout,       // group(1)  height
+                    this.ioBindGroupLayout,       // group(2)  velocityX
+                    this.ioBindGroupLayout,       // group(3)  fluxX
+                    this.constsBindGroupLayout,   // group(4)  dt, gridScale
+                ],
+            }),
+            compute: {
+                module: this.device.createShaderModule({
+                    label: 'UpdateVelocityAndFluxX',
+                    code: shaders.updateVelocityAndFluxXSrc,
+                }),
+                entryPoint: 'updateVelocityAndFluxX',
+            },
+        });
+        this.updateVelocityAndFluxYPipeline = this.device.createComputePipeline({
+            label: 'Update Velocity And Flux Y Pipeline',
+            layout: this.device.createPipelineLayout({
+                bindGroupLayouts: [
+                    this.ioBindGroupLayout,       // group(0)  changeInVelocityY
+                    this.ioBindGroupLayout,       // group(1)  height
+                    this.ioBindGroupLayout,       // group(2)  velocityY
+                    this.ioBindGroupLayout,       // group(3)  fluxY
+                    this.constsBindGroupLayout,   // group(4)  dt, gridScale
+                ],
+            }),
+            compute: {
+                module: this.device.createShaderModule({
+                    label: 'UpdateVelocityAndFluxY',
+                    code: shaders.updateVelocityAndFluxYSrc,
+                }),
+                entryPoint: 'updateVelocityAndFluxY',
+            },
+        });
+    }
+
+    step(dt: number) {
+
+        this.device.queue.writeBuffer(
+            this.timeStepBuffer,
+            0,
+            new Float32Array([dt])
+        );
+
+        const encoder = this.device.createCommandEncoder();
+
+        const wgX = Math.ceil(
+            this.width / shaders.constants.threadsInDiffusionBlockX
+        );
+        const wgY = Math.ceil(
+            this.height / shaders.constants.threadsInDiffusionBlockY
+        );
+        
+        //Initial Velocity X
+        {
+            const initialVelocityXPass = encoder.beginComputePass();
+            initialVelocityXPass.setPipeline(this.initialVelocityXPipeline);
+            initialVelocityXPass.setBindGroup(0, this.previousHeightBindGroup);
+            initialVelocityXPass.setBindGroup(1, this.fluxXBindGroup);
+            initialVelocityXPass.setBindGroup(2, this.velocityXBindGroup);
+            initialVelocityXPass.dispatchWorkgroups(wgX, wgY);
+            initialVelocityXPass.end();
+        }
+
+        //Initial Velocity Y
+        {
+            const initialVelocityYPass = encoder.beginComputePass();
+            initialVelocityYPass.setPipeline(this.initialVelocityYPipeline);
+            initialVelocityYPass.setBindGroup(0, this.previousHeightBindGroup);
+            initialVelocityYPass.setBindGroup(1, this.fluxYBindGroup);
+            initialVelocityYPass.setBindGroup(2, this.velocityYBindGroup);
+            initialVelocityYPass.dispatchWorkgroups(wgX, wgY);
+            initialVelocityYPass.end();
+        }
+        //Copy Texture(height -> previousHeight)
+        {
+            
+            encoder.copyTextureToTexture(
+                {
+                    texture: this.heightMap,
+                },
+                {
+                    texture: this.previousHeightMap,
+                },
+                [this.width, this.height, 1]
+            );
+
+        }
+        //Shallow Height
+        {
+            const shallowHeightPass = encoder.beginComputePass();
+            shallowHeightPass.setPipeline(this.shallowHeightPipeline);
+            shallowHeightPass.setBindGroup(0, this.previousHeightBindGroup);
+            shallowHeightPass.setBindGroup(1, this.velocityXBindGroup);
+            shallowHeightPass.setBindGroup(2, this.velocityYBindGroup);
+            shallowHeightPass.setBindGroup(3, this.heightBindGroup);
+            shallowHeightPass.setBindGroup(4, this.constsBindGroup);
+            shallowHeightPass.dispatchWorkgroups(wgX, wgY);
+            shallowHeightPass.end();
+        }
+        //Shallow Velocity X Step 1 and 2
+        {
+            const shallowVelocityXStep1Pass = encoder.beginComputePass();
+            shallowVelocityXStep1Pass.setPipeline(this.shallowVelocityXStep1Pipeline);
+            shallowVelocityXStep1Pass.setBindGroup(0, this.velocityXBindGroup);
+            shallowVelocityXStep1Pass.setBindGroup(1, this.fluxXBindGroup);
+            shallowVelocityXStep1Pass.setBindGroup(2, this.previousHeightBindGroup);
+            shallowVelocityXStep1Pass.setBindGroup(3, this.changeInVelocityXBindGroup);
+            shallowVelocityXStep1Pass.setBindGroup(4, this.constsBindGroup);
+            shallowVelocityXStep1Pass.dispatchWorkgroups(wgX, wgY);
+            shallowVelocityXStep1Pass.end();
+        }
+        {
+            const shallowVelocityXStep2Pass = encoder.beginComputePass();
+            shallowVelocityXStep2Pass.setPipeline(this.shallowVelocityXStep2Pipeline);
+            shallowVelocityXStep2Pass.setBindGroup(0, this.velocityXBindGroup);
+            shallowVelocityXStep2Pass.setBindGroup(1, this.fluxYBindGroup);
+            shallowVelocityXStep2Pass.setBindGroup(2, this.previousHeightBindGroup);
+            shallowVelocityXStep2Pass.setBindGroup(3, this.changeInVelocityXBindGroup);
+            shallowVelocityXStep2Pass.setBindGroup(4, this.constsBindGroup);
+            shallowVelocityXStep2Pass.dispatchWorkgroups(wgX, wgY);
+            shallowVelocityXStep2Pass.end();
+        }
+        //Shallow Velocity Y Step 1 and 2
+        {
+            const shallowVelocityYStep1Pass = encoder.beginComputePass();
+            shallowVelocityYStep1Pass.setPipeline(this.shallowVelocityYStep1Pipeline);
+            shallowVelocityYStep1Pass.setBindGroup(0, this.velocityYBindGroup);
+            shallowVelocityYStep1Pass.setBindGroup(1, this.fluxXBindGroup);
+            shallowVelocityYStep1Pass.setBindGroup(2, this.previousHeightBindGroup);
+            shallowVelocityYStep1Pass.setBindGroup(3, this.changeInVelocityYBindGroup);
+            shallowVelocityYStep1Pass.setBindGroup(4, this.constsBindGroup);
+            shallowVelocityYStep1Pass.dispatchWorkgroups(wgX, wgY);
+            shallowVelocityYStep1Pass.end();
+        }
+        {
+            const shallowVelocityYStep2Pass = encoder.beginComputePass();
+            shallowVelocityYStep2Pass.setPipeline(this.shallowVelocityYStep2Pipeline);
+            shallowVelocityYStep2Pass.setBindGroup(0, this.velocityYBindGroup);
+            shallowVelocityYStep2Pass.setBindGroup(1, this.fluxYBindGroup);
+            shallowVelocityYStep2Pass.setBindGroup(2, this.previousHeightBindGroup);
+            shallowVelocityYStep2Pass.setBindGroup(3, this.changeInVelocityYBindGroup);
+            shallowVelocityYStep2Pass.setBindGroup(4, this.constsBindGroup);
+            shallowVelocityYStep2Pass.dispatchWorkgroups(wgX, wgY);
+            shallowVelocityYStep2Pass.end();
+        }  
+        //Update Velocity and Flux X and Y 
+        {
+            const updateVelocityAndFluxXPass = encoder.beginComputePass();
+            updateVelocityAndFluxXPass.setPipeline(this.updateVelocityAndFluxXPipeline);
+            updateVelocityAndFluxXPass.setBindGroup(0, this.changeInVelocityXBindGroup);
+            updateVelocityAndFluxXPass.setBindGroup(1, this.heightBindGroup);
+            updateVelocityAndFluxXPass.setBindGroup(2, this.velocityXBindGroup);
+            updateVelocityAndFluxXPass.setBindGroup(3, this.fluxXBindGroup);
+            updateVelocityAndFluxXPass.setBindGroup(4, this.constsBindGroup);
+            updateVelocityAndFluxXPass.dispatchWorkgroups(wgX, wgY);
+            updateVelocityAndFluxXPass.end();
+        }
+        {
+            const updateVelocityAndFluxYPass = encoder.beginComputePass();
+            updateVelocityAndFluxYPass.setPipeline(this.updateVelocityAndFluxYPipeline);
+            updateVelocityAndFluxYPass.setBindGroup(0, this.changeInVelocityYBindGroup);
+            updateVelocityAndFluxYPass.setBindGroup(1, this.heightBindGroup);
+            updateVelocityAndFluxYPass.setBindGroup(2, this.velocityYBindGroup);
+            updateVelocityAndFluxYPass.setBindGroup(3, this.fluxYBindGroup);
+            updateVelocityAndFluxYPass.setBindGroup(4, this.constsBindGroup);
+            updateVelocityAndFluxYPass.dispatchWorkgroups(wgX, wgY);
+            updateVelocityAndFluxYPass.end();
+        }
+        this.device.queue.submit([encoder.finish()]);
+    }
+
+}
 /*
 
 
@@ -29,8 +576,8 @@ shallowHeight(previousHeight, velocityX, velocityY, height, constants);
 shallowVelocityXStep1(velocityX, fluxX, previousHeight, changeInVelocityX, constants);
 shallowVelocityXStep2(velocityX, fluxY, previousHeight, changeInVelocityX, constants);
 
-shallowVelocityXStep1(velocityY, fluxX, previousHeight, changeInvelocityY, constants);
-shallowVelocityXStep2(velocityY, fluxY, previousHeight, changeInvelocityY, constants);
+shallowVelocityYStep1(velocityY, fluxX, previousHeight, changeInvelocityY, constants);
+shallowVelocityYStep2(velocityY, fluxY, previousHeight, changeInvelocityY, constants);
 
 updateVelocityAndFluxX(changeInVelocityX, height, velocity, fluxX, constants);
 updateVelocityAndFluxY(changeInVelocityY, height, velocity, fluxY, constants);

@@ -16,6 +16,19 @@ import velocityComputeRaw from './velocity.cs.wgsl?raw';
 import flowRecombineComputeRaw from './flowRecombine.cs.wgsl?raw';
 import heightRecombineComputeRaw from './heightRecombine.cs.wgsl?raw';
 
+import computeInitialVelocityX from './shallowWaterShaders/computeInitialVelocityX.cs.wgsl?raw';
+import computeInitialVelocityY from './shallowWaterShaders/computeInitialVelocityY.cs.wgsl?raw';
+import shallowHeight from './shallowWaterShaders/shallowHeight.cs.wgsl?raw';
+import shallowVelocityXStep1 from './shallowWaterShaders/shallowVelocityXStep1.cs.wgsl?raw';
+import shallowVelocityXStep2 from './shallowWaterShaders/shallowVelocityXStep2.cs.wgsl?raw';
+import shallowVelocityYStep1 from './shallowWaterShaders/shallowVelocityYStep1.cs.wgsl?raw';
+import shallowVelocityYStep2 from './shallowWaterShaders/shallowVelocityYStep2.cs.wgsl?raw';
+import updateVelocityAndFluxX from './shallowWaterShaders/updateVelocityAndFluxX.cs.wgsl?raw';
+import updateVelocityAndFluxY from './shallowWaterShaders/updateVelocityAndFluxY.cs.wgsl?raw';
+
+
+
+
 // CONSTANTS (for use in shaders)
 export const constants = {
     bindGroup_scene: 0,
@@ -53,3 +66,15 @@ export const transportComputeSrc: string = processShaderRaw(transportComputeRaw)
 export const velocityComputeSrc: string = processShaderRaw(velocityComputeRaw);
 export const flowRecombineComputeSrc: string = processShaderRaw(flowRecombineComputeRaw);
 export const heightRecombineComputeSrc: string = processShaderRaw(heightRecombineComputeRaw);
+
+export const computeInitialVelocityXSrc: string = processShaderRaw(computeInitialVelocityX);
+export const computeInitialVelocityYSrc: string = processShaderRaw(computeInitialVelocityY);
+export const shallowHeightSrc: string = processShaderRaw(shallowHeight);
+export const shallowVelocityXStep1Src: string = processShaderRaw(shallowVelocityXStep1);
+export const shallowVelocityXStep2Src: string = processShaderRaw(shallowVelocityXStep2);
+export const shallowVelocityYStep1Src: string = processShaderRaw(shallowVelocityYStep1);
+export const shallowVelocityYStep2Src: string = processShaderRaw(shallowVelocityYStep2);
+export const updateVelocityAndFluxXSrc: string = processShaderRaw(updateVelocityAndFluxX);
+export const updateVelocityAndFluxYSrc: string = processShaderRaw(updateVelocityAndFluxY);
+
+
