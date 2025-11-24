@@ -1,11 +1,11 @@
 @group(0) @binding(0) var velocityYIn: texture_storage_2d<r32float, read_write>;
-@group(1) @binding(0) var fluxXIn: texture_storage_2d<r32float, read_write>;
-@group(2) @binding(0) var heightIn: texture_storage_2d<r32float, read_write>;
-@group(3) @binding(0) var changeInVelocityYOut: texture_storage_2d<r32float, read_write>;
+@group(0) @binding(1) var fluxXIn: texture_storage_2d<r32float, read_write>;
+@group(0) @binding(2) var heightIn: texture_storage_2d<r32float, read_write>;
+@group(0) @binding(3) var changeInVelocityYOut: texture_storage_2d<r32float, read_write>;
 
 
-@group(4) @binding(0) var<uniform> timeStep: f32;
-@group(4) @binding(1) var<uniform> gridScale: f32;
+@group(1) @binding(0) var<uniform> timeStep: f32;
+@group(1) @binding(1) var<uniform> gridScale: f32;
 
 
 fn upWindHeight(vel: f32) -> u32 {

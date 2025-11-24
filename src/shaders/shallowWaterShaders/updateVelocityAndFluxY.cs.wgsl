@@ -1,12 +1,12 @@
 
 @group(0) @binding(0) var changeInVelocityIn: texture_storage_2d<r32float, read_write>;
-@group(1) @binding(0) var heightIn: texture_storage_2d<r32float, read_write>;
-@group(2) @binding(0) var velocityInOut: texture_storage_2d<r32float, read_write>;
-@group(3) @binding(0) var fluxOut: texture_storage_2d<r32float, read_write>;
+@group(0) @binding(1) var heightIn: texture_storage_2d<r32float, read_write>;
+@group(0) @binding(2) var velocityInOut: texture_storage_2d<r32float, read_write>;
+@group(0) @binding(3) var fluxOut: texture_storage_2d<r32float, read_write>;
 
 
-@group(4) @binding(0) var<uniform> timeStep: f32;
-@group(4) @binding(1) var<uniform> gridScale: f32;
+@group(1) @binding(0) var<uniform> timeStep: f32;
+@group(1) @binding(1) var<uniform> gridScale: f32;
 
 
 fn upWindHeight(vel: f32) -> u32 {
@@ -40,7 +40,7 @@ fn sampleTextures(tex: texture_storage_2d<r32float, read_write>, pos: vec2u, siz
 
 @compute
 @workgroup_size(${threadsInDiffusionBlockX}, ${threadsInDiffusionBlockY}, 1)
-fn updateVelocityAndFluxX(@builtin(global_invocation_id) globalIdx: vec3u) {
+fn updateVelocityAndFluxY(@builtin(global_invocation_id) globalIdx: vec3u) {
 
     let size = textureDimensions(heightIn);
     if(globalIdx.x >= size.x || globalIdx.y >= size.y) {
@@ -52,7 +52,7 @@ fn updateVelocityAndFluxX(@builtin(global_invocation_id) globalIdx: vec3u) {
 
     let newVel = vel + changeInVel * timeStep;
 
-    let height = sampleTextures(heightIn, vec2u(globalIdx.x + upWindHeight(newVel), globalIdx.y), size);
+    let height = sampleTextures(heightIn, vec2u(globalIdx.x, globalIdx.y + upWindHeight(newVel)), size);
 
     let newFlux = newVel * height;
 

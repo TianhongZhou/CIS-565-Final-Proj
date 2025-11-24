@@ -19,6 +19,7 @@ export class ShallowWater {
 
 
     private ioBindGroupLayout!: GPUBindGroupLayout;
+    private ioCombinedBindGroupLayout!: GPUBindGroupLayout;
     private constsBindGroupLayout!: GPUBindGroupLayout;
 
     private heightBindGroup!: GPUBindGroup;
@@ -30,6 +31,15 @@ export class ShallowWater {
     private changeInVelocityXBindGroup!: GPUBindGroup;
     private changeInVelocityYBindGroup!: GPUBindGroup;
     private constsBindGroup!: GPUBindGroup;
+
+    //Redone bind groups
+    private shallowHeightBindGroup!: GPUBindGroup;
+    private shallowVelocityXStep1BindGroup!: GPUBindGroup;
+    private shallowVelocityXStep2BindGroup!: GPUBindGroup;
+    private shallowVelocityYStep1BindGroup!: GPUBindGroup;
+    private shallowVelocityYStep2BindGroup!: GPUBindGroup;
+    private updateVelocityAndFluxXBindGroup!: GPUBindGroup;
+    private updateVelocityAndFluxYBindGroup!: GPUBindGroup;
 
     private timeStepBuffer!: GPUBuffer;
     private gridScaleBuffer!: GPUBuffer;
@@ -115,6 +125,51 @@ export class ShallowWater {
                 },
             ],
         });
+
+        this.ioCombinedBindGroupLayout = this.device.createBindGroupLayout({
+            label: 'diffusion IO combined BGL',
+            entries: [
+                {
+                    binding: 0,
+                    visibility: GPUShaderStage.COMPUTE,
+                    storageTexture: {
+                        format: 'r32float',
+                        access: 'read-write',
+                        viewDimension: '2d',
+                    },
+                },
+                {
+                    binding: 1,
+                    visibility: GPUShaderStage.COMPUTE,
+                    storageTexture: {
+                        format: 'r32float',
+                        access: 'read-write',
+                        viewDimension: '2d',
+                    },
+                },
+                {
+                    binding: 2,
+                    visibility: GPUShaderStage.COMPUTE,
+                    storageTexture: {
+                        format: 'r32float',
+                        access: 'read-write',
+                        viewDimension: '2d',
+                    },
+                },
+                {
+                    binding: 3,
+                    visibility: GPUShaderStage.COMPUTE,
+                    storageTexture: {
+                        format: 'r32float',
+                        access: 'read-write',
+                        viewDimension: '2d',
+                    },
+                }
+            ],
+        });
+
+
+
 
         // Constants
         this.constsBindGroupLayout = this.device.createBindGroupLayout({
@@ -233,6 +288,75 @@ export class ShallowWater {
                 { binding: 1, resource: { buffer: this.gridScaleBuffer } }
             ],
         });
+
+        //Redone bind groups
+        this.shallowHeightBindGroup = this.device.createBindGroup({
+            layout: this.ioCombinedBindGroupLayout,
+            entries: [
+                { binding: 0, resource: this.previousHeightMap.createView() },
+                { binding: 1, resource: this.velocityXMap.createView() },
+                { binding: 2, resource: this.velocityYMap.createView() },
+                { binding: 3, resource: this.heightMap.createView() },
+            ],
+        });
+        this.shallowVelocityXStep1BindGroup = this.device.createBindGroup({
+            layout: this.ioCombinedBindGroupLayout,
+            entries: [
+                { binding: 0, resource: this.velocityXMap.createView() },
+                { binding: 1, resource: this.fluxXMap.createView() },
+                { binding: 2, resource: this.previousHeightMap.createView() },
+                { binding: 3, resource: this.changeInVelocityXMap.createView() },
+            ],
+        });
+        this.shallowVelocityYStep1BindGroup = this.device.createBindGroup({
+            layout: this.ioCombinedBindGroupLayout,
+            entries: [
+                { binding: 0, resource: this.velocityYMap.createView() },
+                { binding: 1, resource: this.fluxYMap.createView() },
+                { binding: 2, resource: this.previousHeightMap.createView() },
+                { binding: 3, resource: this.changeInVelocityYMap.createView() },
+            ],
+        });
+        this.shallowVelocityXStep2BindGroup = this.device.createBindGroup({
+            layout: this.ioCombinedBindGroupLayout,
+            entries: [
+                { binding: 0, resource: this.velocityXMap.createView() },
+                { binding: 1, resource: this.fluxXMap.createView() },
+                { binding: 2, resource: this.previousHeightMap.createView() },
+                { binding: 3, resource: this.changeInVelocityXMap.createView() },
+            ],
+        });
+        this.shallowVelocityYStep2BindGroup = this.device.createBindGroup({
+            layout: this.ioCombinedBindGroupLayout,
+            entries: [
+                { binding: 0, resource: this.velocityYMap.createView() },
+                { binding: 1, resource: this.fluxYMap.createView() },
+                { binding: 2, resource: this.previousHeightMap.createView() },
+                { binding: 3, resource: this.changeInVelocityYMap.createView() },
+            ],
+        });
+        this.updateVelocityAndFluxXBindGroup = this.device.createBindGroup({
+            layout: this.ioCombinedBindGroupLayout,
+            entries: [
+                { binding: 0, resource: this.changeInVelocityXMap.createView() },
+                { binding: 1, resource: this.heightMap.createView() },
+                { binding: 2, resource: this.velocityXMap.createView() },
+                { binding: 3, resource: this.fluxXMap.createView() },
+            ],
+        });
+        this.updateVelocityAndFluxYBindGroup = this.device.createBindGroup({
+            layout: this.ioCombinedBindGroupLayout,
+            entries: [
+                { binding: 0, resource: this.changeInVelocityYMap.createView() },
+                { binding: 1, resource: this.heightMap.createView() },
+                { binding: 2, resource: this.velocityYMap.createView() },
+                { binding: 3, resource: this.fluxYMap.createView() },
+            ],
+        });
+
+
+
+
     }
 
     private createPipeline() {
@@ -278,11 +402,8 @@ export class ShallowWater {
             label: 'Shallow Height Pipeline',
             layout: this.device.createPipelineLayout({
                 bindGroupLayouts: [
-                    this.ioBindGroupLayout,       // group(0)  heightIn
-                    this.ioBindGroupLayout,       // group(1)  velocityXIn
-                    this.ioBindGroupLayout,       // group(2)  velocityYIn
-                    this.ioBindGroupLayout,       // group(3)  heightOut
-                    this.constsBindGroupLayout,   // group(4)  dt, gridScale
+                    this.ioCombinedBindGroupLayout, // group(0)  previousHeight, velocityXIn, velocityYIn, heightOut
+                    this.constsBindGroupLayout,   // group(1)  dt, gridScale
                 ],
             }),
             compute: {
@@ -297,11 +418,8 @@ export class ShallowWater {
             label: 'Shallow Velocity X Step 1 Pipeline',
             layout: this.device.createPipelineLayout({
                 bindGroupLayouts: [
-                    this.ioBindGroupLayout,       // group(0)  velocityX
-                    this.ioBindGroupLayout,       // group(1)  fluxX
-                    this.ioBindGroupLayout,       // group(2)  previousHeight
-                    this.ioBindGroupLayout,       // group(3)  changeInVelocityX
-                    this.constsBindGroupLayout,   // group(4)  dt, gridScale
+                    this.ioCombinedBindGroupLayout, // group(0)  velocityX, fluxX, previousHeight, changeInVelocityX
+                    this.constsBindGroupLayout,   // group(1)  dt, gridScale
                 ],
             }),
             compute: {
@@ -316,11 +434,8 @@ export class ShallowWater {
             label: 'Shallow Velocity X Step 2 Pipeline',
             layout: this.device.createPipelineLayout({
                 bindGroupLayouts: [
-                    this.ioBindGroupLayout,       // group(0)  velocityX
-                    this.ioBindGroupLayout,       // group(1)  fluxY
-                    this.ioBindGroupLayout,       // group(2)  previousHeight
-                    this.ioBindGroupLayout,       // group(3)  changeInVelocityX
-                    this.constsBindGroupLayout,   // group(4)  dt, gridScale
+                    this.ioCombinedBindGroupLayout, // group(0)  velocityX, fluxY, previousHeight, changeInVelocityX
+                    this.constsBindGroupLayout,   // group(1)  dt, gridScale
                 ],
             }),
             compute: {
@@ -335,11 +450,8 @@ export class ShallowWater {
             label: 'Shallow Velocity Y Step 1 Pipeline',
             layout: this.device.createPipelineLayout({
                 bindGroupLayouts: [
-                    this.ioBindGroupLayout,       // group(0)  velocityY
-                    this.ioBindGroupLayout,       // group(1)  fluxX
-                    this.ioBindGroupLayout,       // group(2)  previousHeight
-                    this.ioBindGroupLayout,       // group(3)  changeInVelocityY
-                    this.constsBindGroupLayout,   // group(4)  dt, gridScale
+                    this.ioCombinedBindGroupLayout, // group(0)  velocityY, fluxX, previousHeight, changeInVelocityY
+                    this.constsBindGroupLayout,   // group(1)  dt, gridScale
                 ],
             }),
             compute: {
@@ -354,11 +466,8 @@ export class ShallowWater {
             label: 'Shallow Velocity Y Step 2 Pipeline',
             layout: this.device.createPipelineLayout({
                 bindGroupLayouts: [
-                    this.ioBindGroupLayout,       // group(0)  velocityY
-                    this.ioBindGroupLayout,       // group(1)  fluxY
-                    this.ioBindGroupLayout,       // group(2)  previousHeight
-                    this.ioBindGroupLayout,       // group(3)  changeInVelocityY
-                    this.constsBindGroupLayout,   // group(4)  dt, gridScale
+                    this.ioCombinedBindGroupLayout, // group(0)  velocityY, fluxY, previousHeight, changeInVelocityY
+                    this.constsBindGroupLayout,   // group(1)  dt, gridScale
                 ],
             }),
             compute: {
@@ -373,11 +482,8 @@ export class ShallowWater {
             label: 'Update Velocity And Flux X Pipeline',
             layout: this.device.createPipelineLayout({
                 bindGroupLayouts: [
-                    this.ioBindGroupLayout,       // group(0)  changeInVelocityX
-                    this.ioBindGroupLayout,       // group(1)  height
-                    this.ioBindGroupLayout,       // group(2)  velocityX
-                    this.ioBindGroupLayout,       // group(3)  fluxX
-                    this.constsBindGroupLayout,   // group(4)  dt, gridScale
+                    this.ioCombinedBindGroupLayout, // group(0)  changeInVelocityX, height, velocityX, fluxX
+                    this.constsBindGroupLayout,   // group(1)  dt, gridScale
                 ],
             }),
             compute: {
@@ -392,11 +498,8 @@ export class ShallowWater {
             label: 'Update Velocity And Flux Y Pipeline',
             layout: this.device.createPipelineLayout({
                 bindGroupLayouts: [
-                    this.ioBindGroupLayout,       // group(0)  changeInVelocityY
-                    this.ioBindGroupLayout,       // group(1)  height
-                    this.ioBindGroupLayout,       // group(2)  velocityY
-                    this.ioBindGroupLayout,       // group(3)  fluxY
-                    this.constsBindGroupLayout,   // group(4)  dt, gridScale
+                    this.ioCombinedBindGroupLayout, // group(0)  changeInVelocityY, height, velocityY, fluxY
+                    this.constsBindGroupLayout,   // group(1)  dt, gridScale
                 ],
             }),
             compute: {
@@ -467,11 +570,8 @@ export class ShallowWater {
         {
             const shallowHeightPass = encoder.beginComputePass();
             shallowHeightPass.setPipeline(this.shallowHeightPipeline);
-            shallowHeightPass.setBindGroup(0, this.previousHeightBindGroup);
-            shallowHeightPass.setBindGroup(1, this.velocityXBindGroup);
-            shallowHeightPass.setBindGroup(2, this.velocityYBindGroup);
-            shallowHeightPass.setBindGroup(3, this.heightBindGroup);
-            shallowHeightPass.setBindGroup(4, this.constsBindGroup);
+            shallowHeightPass.setBindGroup(0, this.shallowHeightBindGroup);
+            shallowHeightPass.setBindGroup(1, this.constsBindGroup);
             shallowHeightPass.dispatchWorkgroups(wgX, wgY);
             shallowHeightPass.end();
         }
@@ -479,22 +579,16 @@ export class ShallowWater {
         {
             const shallowVelocityXStep1Pass = encoder.beginComputePass();
             shallowVelocityXStep1Pass.setPipeline(this.shallowVelocityXStep1Pipeline);
-            shallowVelocityXStep1Pass.setBindGroup(0, this.velocityXBindGroup);
-            shallowVelocityXStep1Pass.setBindGroup(1, this.fluxXBindGroup);
-            shallowVelocityXStep1Pass.setBindGroup(2, this.previousHeightBindGroup);
-            shallowVelocityXStep1Pass.setBindGroup(3, this.changeInVelocityXBindGroup);
-            shallowVelocityXStep1Pass.setBindGroup(4, this.constsBindGroup);
+            shallowVelocityXStep1Pass.setBindGroup(0, this.shallowVelocityXStep1BindGroup);
+            shallowVelocityXStep1Pass.setBindGroup(1, this.constsBindGroup);
             shallowVelocityXStep1Pass.dispatchWorkgroups(wgX, wgY);
             shallowVelocityXStep1Pass.end();
         }
         {
             const shallowVelocityXStep2Pass = encoder.beginComputePass();
             shallowVelocityXStep2Pass.setPipeline(this.shallowVelocityXStep2Pipeline);
-            shallowVelocityXStep2Pass.setBindGroup(0, this.velocityXBindGroup);
-            shallowVelocityXStep2Pass.setBindGroup(1, this.fluxYBindGroup);
-            shallowVelocityXStep2Pass.setBindGroup(2, this.previousHeightBindGroup);
-            shallowVelocityXStep2Pass.setBindGroup(3, this.changeInVelocityXBindGroup);
-            shallowVelocityXStep2Pass.setBindGroup(4, this.constsBindGroup);
+            shallowVelocityXStep2Pass.setBindGroup(0, this.shallowVelocityXStep2BindGroup);
+            shallowVelocityXStep2Pass.setBindGroup(1, this.constsBindGroup);
             shallowVelocityXStep2Pass.dispatchWorkgroups(wgX, wgY);
             shallowVelocityXStep2Pass.end();
         }
@@ -502,22 +596,16 @@ export class ShallowWater {
         {
             const shallowVelocityYStep1Pass = encoder.beginComputePass();
             shallowVelocityYStep1Pass.setPipeline(this.shallowVelocityYStep1Pipeline);
-            shallowVelocityYStep1Pass.setBindGroup(0, this.velocityYBindGroup);
-            shallowVelocityYStep1Pass.setBindGroup(1, this.fluxXBindGroup);
-            shallowVelocityYStep1Pass.setBindGroup(2, this.previousHeightBindGroup);
-            shallowVelocityYStep1Pass.setBindGroup(3, this.changeInVelocityYBindGroup);
-            shallowVelocityYStep1Pass.setBindGroup(4, this.constsBindGroup);
+            shallowVelocityYStep1Pass.setBindGroup(0, this.shallowVelocityYStep1BindGroup);
+            shallowVelocityYStep1Pass.setBindGroup(1, this.constsBindGroup);
             shallowVelocityYStep1Pass.dispatchWorkgroups(wgX, wgY);
             shallowVelocityYStep1Pass.end();
         }
         {
             const shallowVelocityYStep2Pass = encoder.beginComputePass();
             shallowVelocityYStep2Pass.setPipeline(this.shallowVelocityYStep2Pipeline);
-            shallowVelocityYStep2Pass.setBindGroup(0, this.velocityYBindGroup);
-            shallowVelocityYStep2Pass.setBindGroup(1, this.fluxYBindGroup);
-            shallowVelocityYStep2Pass.setBindGroup(2, this.previousHeightBindGroup);
-            shallowVelocityYStep2Pass.setBindGroup(3, this.changeInVelocityYBindGroup);
-            shallowVelocityYStep2Pass.setBindGroup(4, this.constsBindGroup);
+            shallowVelocityYStep2Pass.setBindGroup(0, this.shallowVelocityYStep2BindGroup);
+            shallowVelocityYStep2Pass.setBindGroup(1, this.constsBindGroup);
             shallowVelocityYStep2Pass.dispatchWorkgroups(wgX, wgY);
             shallowVelocityYStep2Pass.end();
         }  
@@ -525,22 +613,16 @@ export class ShallowWater {
         {
             const updateVelocityAndFluxXPass = encoder.beginComputePass();
             updateVelocityAndFluxXPass.setPipeline(this.updateVelocityAndFluxXPipeline);
-            updateVelocityAndFluxXPass.setBindGroup(0, this.changeInVelocityXBindGroup);
-            updateVelocityAndFluxXPass.setBindGroup(1, this.heightBindGroup);
-            updateVelocityAndFluxXPass.setBindGroup(2, this.velocityXBindGroup);
-            updateVelocityAndFluxXPass.setBindGroup(3, this.fluxXBindGroup);
-            updateVelocityAndFluxXPass.setBindGroup(4, this.constsBindGroup);
+            updateVelocityAndFluxXPass.setBindGroup(0, this.updateVelocityAndFluxXBindGroup);
+            updateVelocityAndFluxXPass.setBindGroup(1, this.constsBindGroup);
             updateVelocityAndFluxXPass.dispatchWorkgroups(wgX, wgY);
             updateVelocityAndFluxXPass.end();
         }
         {
             const updateVelocityAndFluxYPass = encoder.beginComputePass();
             updateVelocityAndFluxYPass.setPipeline(this.updateVelocityAndFluxYPipeline);
-            updateVelocityAndFluxYPass.setBindGroup(0, this.changeInVelocityYBindGroup);
-            updateVelocityAndFluxYPass.setBindGroup(1, this.heightBindGroup);
-            updateVelocityAndFluxYPass.setBindGroup(2, this.velocityYBindGroup);
-            updateVelocityAndFluxYPass.setBindGroup(3, this.fluxYBindGroup);
-            updateVelocityAndFluxYPass.setBindGroup(4, this.constsBindGroup);
+            updateVelocityAndFluxYPass.setBindGroup(0, this.updateVelocityAndFluxYBindGroup);
+            updateVelocityAndFluxYPass.setBindGroup(1, this.constsBindGroup);
             updateVelocityAndFluxYPass.dispatchWorkgroups(wgX, wgY);
             updateVelocityAndFluxYPass.end();
         }

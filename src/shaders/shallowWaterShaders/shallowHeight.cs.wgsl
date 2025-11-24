@@ -1,11 +1,11 @@
 @group(0) @binding(0) var heightIn: texture_storage_2d<r32float, read_write>;
-@group(1) @binding(0) var velocityXIn: texture_storage_2d<r32float, read_write>;
-@group(2) @binding(0) var velocityYIn: texture_storage_2d<r32float, read_write>;
-@group(3) @binding(0) var heightOut: texture_storage_2d<r32float, read_write>;
+@group(0) @binding(1) var velocityXIn: texture_storage_2d<r32float, read_write>;
+@group(0) @binding(2) var velocityYIn: texture_storage_2d<r32float, read_write>;
+@group(0) @binding(3) var heightOut: texture_storage_2d<r32float, read_write>;
 
 
-@group(4) @binding(0) var<uniform> timeStep: f32;
-@group(4) @binding(1) var<uniform> gridScale: f32;
+@group(1) @binding(0) var<uniform> timeStep: f32;
+@group(1) @binding(1) var<uniform> gridScale: f32;
 
 //TODO: Do proper boundary check for textures
 
@@ -40,7 +40,7 @@ fn sampleTextures(tex: texture_storage_2d<r32float, read_write>, pos: vec2u, siz
 
 @compute
 @workgroup_size(${threadsInDiffusionBlockX}, ${threadsInDiffusionBlockY}, 1)
-fn shallowHeightStep(@builtin(global_invocation_id) globalIdx: vec3u) {
+fn shallowHeight(@builtin(global_invocation_id) globalIdx: vec3u) {
 
     let size = textureDimensions(heightIn);
     if(globalIdx.x >= size.x || globalIdx.y >= size.y) {

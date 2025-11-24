@@ -64,7 +64,7 @@ export class Simulator {
   }
 
   simulateBulk(dt: GLfloat) {
-
+    this.shallowWater.step(dt);
   }
 
   simulateAiry(dt: GLfloat) {
@@ -89,8 +89,8 @@ export class Simulator {
     if(this.firstFrame){
         
     }
-    this.shallowWater.step(clampedDt);
-
+    
+    //this.simulateBulk(clampedDt);
     this.simulateAiry(clampedDt);
 
     
