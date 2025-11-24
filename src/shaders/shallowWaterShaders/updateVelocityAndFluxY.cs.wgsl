@@ -21,6 +21,23 @@ fn upWindHeight(vel: f32) -> int {
 
 }
 
+//Need to verify that the behavior here is correct, but should probably use this.
+fn sampleTextures(tex: texture_storage_2d<r32float, read_write>, pos: vec2u, size: vec2u) -> f32 {
+    var value: f32;
+    //Note: unecessary to check for negative on unsigned ints, it's just a small precaution. Negatives should wrap around to large positive numbers.
+    if(pos.x >= size.x || pos.y >= size.y || pos.x < 0 || pos.y < 0) {
+        value = 0.001;
+       
+    }
+    else
+    {
+       value = textureLoad(tex, vec2u(pos.x, pos.y)).x;
+    }
+    return values;
+    
+
+}
+
 #compute
 @workgroup_size(${threadsInDiffusionBlockX}, ${threadsInDiffusionBlockY}, 1)
 fn updateVelocityAndFluxX(@builtin(global_invocation_id) globalIdx: vec3u) {
@@ -30,12 +47,12 @@ fn updateVelocityAndFluxX(@builtin(global_invocation_id) globalIdx: vec3u) {
         return;
     }
 
-    let vel = textureLoad(velocityInOut, vec2u(globalIdx.x, globalIdx.y)).x;
-    let changeInVel = textureLoad(changeInVelocity, vec2u(globalIdx.x, globalIdx.y)).x;
+    let vel = sampleTextures(velocityInOut, vec2u(globalIdx.x, globalIdx.y), size).x;
+    let changeInVel = sampleTextures(changeInVelocity, vec2u(globalIdx.x, globalIdx.y), size).x;
 
     let newVel = vel + changeInVel * timeStep;
 
-    let height = textureLoad(heightIn, vec2u(globalIdx.x + upWindHeight(newVel), globalIdx.y))
+    let height = sampleTextures(heightIn, vec2u(globalIdx.x + upWindHeight(newVel), globalIdx.y), size);
 
     let newFlux = newVel * height;
 

@@ -6,7 +6,8 @@ export class FlowRecombineCS {
     private width: number;
     private height: number;
 
-
+    //Note: These heights are the low frequency heights gotten from the diffuse step. 
+    //First instantiation of the previousHeight texture should be the same as height texture, and not all zeroes.
     private heightMap: GPUTexture; 
     private previousHeightMap: GPUTexture;
     private fluxXMap: GPUTexture;
@@ -447,6 +448,8 @@ export class FlowRecombineCS {
             initialVelocityYPass.end();
         }
         //Copy Texture(height -> previousHeight)
+        
+        
         {
             
             encoder.copyTextureToTexture(
@@ -546,7 +549,7 @@ export class FlowRecombineCS {
 
 }
 /*
-
+Pseudo-code
 
 Textures needed:
 
