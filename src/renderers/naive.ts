@@ -6,6 +6,7 @@ import { Camera, CameraUniforms } from '../stage/camera';
 import { DiffuseCS } from '../simulator/Diffuse';
 import { Simulator } from '../simulator/simulator';
 // import { AiryWave } from '../simulator/AiryWave';
+import { ShallowWater } from '../simulator/ShallowWater';
 import { AiryWaveCS } from '../simulator/AiryWaveCS';
 import { TransportCS } from '../simulator/Transport';
 import { VelocityCS } from '../simulator/Velocity';
@@ -62,6 +63,17 @@ export class NaiveRenderer extends renderer.Renderer {
     qyLowFreqTexturePingpong: GPUTexture;
     qyHighFreqTexture: GPUTexture;
 
+
+    // --- lowFreq previous height + Velocity textures for shallow water
+
+    private lowFreqPrevHeightTexture: GPUTexture;
+    private lowFreqVelocityXTexture: GPUTexture;
+    private lowFreqVelocityYTexture: GPUTexture;
+    private changeInLowFreqVelocityXTexture: GPUTexture;
+    private changeInLowFreqVelocityYTexture: GPUTexture;
+
+
+
     // --- Velocity & transport lambda texture ---
     // u = (u_x, u_y)，cell-centered for now
     private uXTex: GPUTexture;
@@ -86,6 +98,8 @@ export class NaiveRenderer extends renderer.Renderer {
 
     private simulator: Simulator;
 
+
+    private shallowWater: ShallowWater;
     // AiryWave compute
     // private airyWave: AiryWave;
     private airyWaveCS: AiryWaveCS;
@@ -356,6 +370,34 @@ export class NaiveRenderer extends renderer.Renderer {
             format: "r32float",
             usage: texUsage,
         });
+
+        //Shallow water extra textures
+        this.lowFreqPrevHeightTexture = renderer.device.createTexture({
+            size: [this.heightW, this.heightH],
+            format: "r32float",
+            usage: texUsage,
+        });
+        this.lowFreqVelocityXTexture = renderer.device.createTexture({
+            size: [this.heightW, this.heightH],
+            format: "r32float",
+            usage: texUsage,
+        });
+        this.lowFreqVelocityYTexture = renderer.device.createTexture({
+            size: [this.heightW, this.heightH],
+            format: "r32float",
+            usage: texUsage,
+        });
+        this.changeInLowFreqVelocityXTexture = renderer.device.createTexture({
+            size: [this.heightW, this.heightH],
+            format: "r32float",
+            usage: texUsage,
+        });
+        this.changeInLowFreqVelocityYTexture = renderer.device.createTexture({
+            size: [this.heightW, this.heightH],
+            format: "r32float",
+            usage: texUsage,
+        });
+
 
         // velocity u & transport output λ texture
         this.uXTex = renderer.device.createTexture({
@@ -674,7 +716,20 @@ export class NaiveRenderer extends renderer.Renderer {
             // which would cause problems in the dispersion relation.
             smoothDepth[i] = Math.max(depth, 0.01);
         }
-
+        this.shallowWater = new ShallowWater(
+            renderer.device,
+            this.heightW,
+            this.heightW,
+            this.lowFreqTexture,
+            this.lowFreqPrevHeightTexture,
+            this.qxLowFreqTexture,
+            this.qyLowFreqTexture,
+            this.lowFreqVelocityXTexture,
+            this.lowFreqVelocityYTexture,
+            this.changeInLowFreqVelocityXTexture,
+            this.changeInLowFreqVelocityYTexture
+        );
+        
         this.airyWaveCS = new AiryWaveCS(
             renderer.device,
             this.heightW,
@@ -755,6 +810,7 @@ export class NaiveRenderer extends renderer.Renderer {
             this.diffuseFluxX,
             this.diffuseFluxY,
             this.velocityCS,
+            this.shallowWater,
             this.airyWaveCS,
             this.transportFlowRateX,
             this.transportFlowRateY,

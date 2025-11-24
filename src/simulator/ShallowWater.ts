@@ -1,7 +1,7 @@
 
 import * as shaders from "../shaders/shaders";
 
-export class FlowRecombineCS {
+export class ShallowWater {
     private device: GPUDevice;
     private width: number;
     private height: number;

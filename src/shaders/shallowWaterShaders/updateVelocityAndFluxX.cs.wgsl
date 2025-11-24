@@ -1,5 +1,5 @@
 
-@group(0) @binding(0) var changeInVelocityInt: texture_storage_2d<r32float, read_write>;
+@group(0) @binding(0) var changeInVelocityIn: texture_storage_2d<r32float, read_write>;
 @group(1) @binding(0) var heightIn: texture_storage_2d<r32float, read_write>;
 @group(2) @binding(0) var velocityInOut: texture_storage_2d<r32float, read_write>;
 @group(3) @binding(0) var fluxOut: texture_storage_2d<r32float, read_write>;
@@ -9,7 +9,7 @@
 @group(4) @binding(1) var<uniform> gridScale: f32;
 
 
-fn upWindHeight(vel: f32) -> int {
+fn upWindHeight(vel: f32) -> u32 {
     if(vel <= 0.0)
     {
         return 1;
@@ -32,12 +32,12 @@ fn sampleTextures(tex: texture_storage_2d<r32float, read_write>, pos: vec2u, siz
     {
        value = textureLoad(tex, vec2u(pos.x, pos.y)).x;
     }
-    return values;
+    return value;
     
 
 }
 
-#compute
+@compute
 @workgroup_size(${threadsInDiffusionBlockX}, ${threadsInDiffusionBlockY}, 1)
 fn updateVelocityAndFluxY(@builtin(global_invocation_id) globalIdx: vec3u) {
 
@@ -46,8 +46,8 @@ fn updateVelocityAndFluxY(@builtin(global_invocation_id) globalIdx: vec3u) {
         return;
     }
 
-    let vel = sampleTextures(velocityInOut, vec2u(globalIdx.x, globalIdx.y), size).x;
-    let changeInVel = sampleTextures(changeInVelocity, vec2u(globalIdx.x, globalIdx.y), size).x;
+    let vel = sampleTextures(velocityInOut, vec2u(globalIdx.x, globalIdx.y), size);
+    let changeInVel = sampleTextures(changeInVelocityIn, vec2u(globalIdx.x, globalIdx.y), size);
 
     let newVel = vel + changeInVel * timeStep;
 
@@ -56,5 +56,5 @@ fn updateVelocityAndFluxY(@builtin(global_invocation_id) globalIdx: vec3u) {
     let newFlux = newVel * height;
 
     textureStore(velocityInOut, vec2u(globalIdx.x, globalIdx.y), vec4f(newVel, 0, 0, 0));
-    textureStore(fluxOut, vec2u(globalIdx.x, globalIdx.y), vec4f(newFlux, 0, 0, 0))
+    textureStore(fluxOut, vec2u(globalIdx.x, globalIdx.y), vec4f(newFlux, 0, 0, 0));
 }

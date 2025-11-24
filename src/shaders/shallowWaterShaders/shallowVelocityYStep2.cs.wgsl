@@ -8,7 +8,7 @@
 @group(4) @binding(1) var<uniform> gridScale: f32;
 
 
-fn upWindHeight(vel: f32) -> int {
+fn upWindHeight(vel: f32) -> u32 {
     if(vel <= 0.0)
     {
         return 1;
@@ -31,7 +31,7 @@ fn sampleTextures(tex: texture_storage_2d<r32float, read_write>, pos: vec2u, siz
     {
        value = textureLoad(tex, vec2u(pos.x, pos.y)).x;
     }
-    return values;
+    return value;
     
 
 }
@@ -48,16 +48,16 @@ fn shallowVelocityYStep2(@builtin(global_invocation_id) globalIdx: vec3u) {
     }
 
     
-    let velYUp = sampleTextures(velocityYIn, vec2u(globalIdx.x, globalIdx.y), size).x;
-    let velYDown = sampleTextures(velocityYIn, vec2u(globalIdx.x, globalIdx.y - 1), size).x;
+    let velYUp = sampleTextures(velocityYIn, vec2u(globalIdx.x, globalIdx.y), size);
+    let velYDown = sampleTextures(velocityYIn, vec2u(globalIdx.x, globalIdx.y - 1), size);
     
-    let fluxYUp = sampleTextures(fluxYIn, vec2u(globalIdx.x, globalIdx.y), size).x;
-    let fluxYDown= sampleTextures(fluxYIn, vec2u(globalIdx.x, globalIdx.y - 1), size).x;
+    let fluxYUp = sampleTextures(fluxYIn, vec2u(globalIdx.x, globalIdx.y), size);
+    let fluxYDown= sampleTextures(fluxYIn, vec2u(globalIdx.x, globalIdx.y - 1), size);
     let fluxYCenter = (fluxYUp + fluxYDown) / 2.0;
     
-    let heightStaggeredUp = sampleTextures(heightIn, vec2u(globalIdx.x , globalIdx.y + upWindHeight(velYUp)), size).x;
-    let heightCenter = sampleTextures(heightIn, vec2u(globalIdx.x, globalIdx.y), size).x;
-    let heightUp = textureLoad(heightIn, vec2u(globalIdx.x + 1, globalIdx.y));
+    let heightStaggeredUp = sampleTextures(heightIn, vec2u(globalIdx.x , globalIdx.y + upWindHeight(velYUp)), size);
+    let heightCenter = sampleTextures(heightIn, vec2u(globalIdx.x, globalIdx.y), size);
+    let heightUp = sampleTextures(heightIn, vec2u(globalIdx.x + 1, globalIdx.y), size);
 
 
     let gravity = 9.80665;
@@ -67,8 +67,8 @@ fn shallowVelocityYStep2(@builtin(global_invocation_id) globalIdx: vec3u) {
     
     
 
-    let prevChangeInVel = textureLoad(changeInVelocityYOut, vec2u(globalIdx.x, globalIdx.y));
-    textureStore(changeInVelocityXOut, vec2u(globalIdx.x, globalIdx.y), vec4f(changeInVelocity + prevChangeInVel, 0, 0, 0));
+    let prevChangeInVel = textureLoad(changeInVelocityYOut, vec2u(globalIdx.x, globalIdx.y)).x;
+    textureStore(changeInVelocityYOut, vec2u(globalIdx.x, globalIdx.y), vec4f(changeInVelocity + prevChangeInVel, 0, 0, 0));
     
 
 }

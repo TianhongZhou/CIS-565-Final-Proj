@@ -8,7 +8,7 @@
 @group(4) @binding(1) var<uniform> gridScale: f32;
 
 
-fn upWindHeight(vel: f32) -> int {
+fn upWindHeight(vel: f32) -> u32 {
     if(vel <= 0.0)
     {
         return 1;
@@ -32,7 +32,7 @@ fn sampleTextures(tex: texture_storage_2d<r32float, read_write>, pos: vec2u, siz
     {
        value = textureLoad(tex, vec2u(pos.x, pos.y)).x;
     }
-    return values;
+    return value;
     
 
 }
@@ -47,15 +47,15 @@ fn shallowVelocityXStep1(@builtin(global_invocation_id) globalIdx: vec3u) {
         return;
     }
     
-    let velXRight = sampleTextures(velocityXIn, vec2u(globalIdx.x, globalIdx.y), size).x;
-    let velXLeft = sampleTextures(velocityXIn, vec2u(globalIdx.x - 1, globalIdx.y), size).x;
+    let velXRight = sampleTextures(velocityXIn, vec2u(globalIdx.x, globalIdx.y), size);
+    let velXLeft = sampleTextures(velocityXIn, vec2u(globalIdx.x - 1, globalIdx.y), size);
 
 
-    let fluxXRight = sampleTextures(fluxXIn, vec2u(globalIdx.x, globalIdx.y), size).x;
-    let fluxXLeft = sampleTextures(fluxXIn, vec2u(globalIdx.x - 1, globalIdx.y), size).x;
+    let fluxXRight = sampleTextures(fluxXIn, vec2u(globalIdx.x, globalIdx.y), size);
+    let fluxXLeft = sampleTextures(fluxXIn, vec2u(globalIdx.x - 1, globalIdx.y), size);
     let fluxXCenter = (fluxXLeft + fluxXRight) / 2.0;
 
-    let heightRight = sampleTextures(heightIn, vec2u(globalIdx.x + upWindHeight(velXRight), globalIdx.y), size).x;
+    let heightRight = sampleTextures(heightIn, vec2u(globalIdx.x + upWindHeight(velXRight), globalIdx.y), size);
     let changeInVelocity = -(fluxXCenter * (velXRight - velXLeft)) / (gridScale * heightRight);
     
     //Assuming this is the first step. Subsequent steps will add to this value, so will need to both read and write.

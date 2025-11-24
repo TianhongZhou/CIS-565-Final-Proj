@@ -8,7 +8,7 @@
 @group(4) @binding(1) var<uniform> gridScale: f32;
 
 
-fn upWindHeight(vel: f32) -> int {
+fn upWindHeight(vel: f32) -> u32 {
     if(vel <= 0.0)
     {
         return 1;
@@ -31,7 +31,7 @@ fn sampleTextures(tex: texture_storage_2d<r32float, read_write>, pos: vec2u, siz
     {
        value = textureLoad(tex, vec2u(pos.x, pos.y)).x;
     }
-    return values;
+    return value;
     
 
 }
@@ -48,16 +48,16 @@ fn shallowVelocityXStep2(@builtin(global_invocation_id) globalIdx: vec3u) {
         return;
     }
 
-    let velXRight = sampleTextures(velocityXIn, vec2u(globalIdx.x, globalIdx.y), size).x;
-    let velXDownRight = sampleTextures(velocityXIn, vec2u(globalIdx.x, globalIdx.y - 1), size).x;
+    let velXRight = sampleTextures(velocityXIn, vec2u(globalIdx.x, globalIdx.y), size);
+    let velXDownRight = sampleTextures(velocityXIn, vec2u(globalIdx.x, globalIdx.y - 1), size);
     
     
-    let fluxYDown = sampleTextures(fluxYIn, vec2u(globalIdx.x, globalIdx.y - 1), size).x;
+    let fluxYDown = sampleTextures(fluxYIn, vec2u(globalIdx.x, globalIdx.y - 1), size);
 
     
     let heightStaggeredRight = sampleTextures(heightIn, vec2u(globalIdx.x + upWindHeight(velXRight), globalIdx.y), size);
-    let heightCenter = textureLoad(heightIn, vec2u(globalIdx.x, globalIdx.y));
-    let heightRight = textureLoad(heightIn, vec2u(globalIdx.x + 1, globalIdx.y));
+    let heightCenter = sampleTextures(heightIn, vec2u(globalIdx.x, globalIdx.y), size);
+    let heightRight = sampleTextures(heightIn, vec2u(globalIdx.x + 1, globalIdx.y), size);
 
 
     let gravity = 9.80665;
@@ -67,7 +67,7 @@ fn shallowVelocityXStep2(@builtin(global_invocation_id) globalIdx: vec3u) {
     
     
 
-    let prevChangeInVel = textureLoad(changeInVelocityXOut, vec2u(globalIdx.x, globalIdx.y));
+    let prevChangeInVel = textureLoad(changeInVelocityXOut, vec2u(globalIdx.x, globalIdx.y)).x;
     textureStore(changeInVelocityXOut, vec2u(globalIdx.x, globalIdx.y), vec4f(changeInVelocity + prevChangeInVel, 0, 0, 0));
     
 

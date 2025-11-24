@@ -4,6 +4,7 @@ import { TransportCS } from "./Transport";
 import { VelocityCS } from "./Velocity";
 import { FlowRecombineCS } from "./FlowRecombineCS";
 import { HeightRecombineCS } from "./HeightRecombineCS";
+import {ShallowWater} from "./ShallowWater";
 
 export class Simulator {
   W: number;
@@ -12,6 +13,7 @@ export class Simulator {
   private diffuseFluxX: DiffuseCS;
   private diffuseFluxY: DiffuseCS;
   private velocityCS: VelocityCS;
+  private shallowWater: ShallowWater;
   private airyCS: AiryWaveCS;
   private transportFlowRateX: TransportCS;
   private transportFlowRateY: TransportCS;
@@ -19,6 +21,7 @@ export class Simulator {
   private flowRecombineX: FlowRecombineCS;
   private flowRecombineY: FlowRecombineCS;
   private heightRecombine: HeightRecombineCS;
+  private firstFrame: boolean = true;
 
   constructor(
     W: number,
@@ -28,6 +31,7 @@ export class Simulator {
     diffuseFluxX: DiffuseCS,
     diffuseFluxY: DiffuseCS,
     velocity: VelocityCS,
+    shallowWater: ShallowWater,
     airy: AiryWaveCS,
     transportFlowRateX: TransportCS,
     transportFlowRateY: TransportCS,
@@ -42,6 +46,7 @@ export class Simulator {
     this.diffuseFluxX  = diffuseFluxX;
     this.diffuseFluxY  = diffuseFluxY;
     this.velocityCS = velocity;
+    this.shallowWater = shallowWater;
     this.airyCS = airy;
     this.transportFlowRateX = transportFlowRateX;
     this.transportFlowRateY = transportFlowRateY;
@@ -49,6 +54,7 @@ export class Simulator {
     this.flowRecombineX = flowRecombineX;
     this.flowRecombineY = flowRecombineY;
     this.heightRecombine = heightRecombine;
+    this.firstFrame = true;
   }
 
   simulateDecompose(dt: GLfloat) {
@@ -79,7 +85,15 @@ export class Simulator {
     const clampedDt = Math.min(dt, 0.25);
     this.simulateDecompose(clampedDt);
 
+    //For shallow water, need to initialize the previous height on first frame so that it's not empty.
+    if(this.firstFrame){
+        
+    }
+    this.shallowWater.step(clampedDt);
+
     this.simulateAiry(clampedDt);
+
+    
 
     this.transportSurface(clampedDt);
 

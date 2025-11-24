@@ -3,7 +3,7 @@
 @group(2) @binding(0) var velocityOut: texture_storage_2d<r32float, read_write>;
 
 //It says we should upwind height, but we don't have the velocity yet, so I think we can just use the flux?
-fn upWindHeight(vel: f32) -> int {
+fn upWindHeight(vel: f32) -> u32 {
     if(vel <= 0.0)
     {
         return 1;
@@ -26,12 +26,12 @@ fn sampleTextures(tex: texture_storage_2d<r32float, read_write>, pos: vec2u, siz
     {
        value = textureLoad(tex, vec2u(pos.x, pos.y)).x;
     }
-    return values;
+    return value;
     
 
 }
 
-#compute
+@compute
 @workgroup_size(${threadsInDiffusionBlockX}, ${threadsInDiffusionBlockY}, 1)
 fn computeInitialVelocityY(@builtin(global_invocation_id) globalIdx: vec3u) {
 
