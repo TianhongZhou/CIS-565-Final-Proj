@@ -9,6 +9,8 @@ import { Simulator } from '../simulator/simulator';
 import { AiryWaveCS } from '../simulator/AiryWaveCS';
 import { TransportCS } from '../simulator/Transport';
 import { VelocityCS } from '../simulator/Velocity';
+import { FlowRecombineCS } from '../simulator/FlowRecombineCS';
+import { HeightRecombineCS } from '../simulator/HeightRecombineCS';
 
 export class NaiveRenderer extends renderer.Renderer {
     sceneUniformsBindGroupLayout: GPUBindGroupLayout;
@@ -66,7 +68,8 @@ export class NaiveRenderer extends renderer.Renderer {
     private uYTex: GPUTexture;
 
     // Transport output: lambda（ping-pong）
-    private qLowTransportTex: GPUTexture;   // λ=q 
+    private qLowTransportTexX: GPUTexture; 
+    private qLowTransportTexY: GPUTexture;
     private hLowTransportTex: GPUTexture;   // λ=h
 
     // --- Upload helpers for writeTexture() row alignment ---
@@ -88,8 +91,14 @@ export class NaiveRenderer extends renderer.Renderer {
     private airyWaveCS: AiryWaveCS;
 
     // Transport
-    private transportFlowRate: TransportCS;
+    private transportFlowRateX: TransportCS;
+    private transportFlowRateY: TransportCS;
     private transportHeight: TransportCS;
+
+    // Combine
+    private flowRecombineX: FlowRecombineCS;
+    private flowRecombineY: FlowRecombineCS;
+    private heightRecombine: HeightRecombineCS;
 
     // --- Reflection state (CPU & GPU resources) ---
     // Color texture where we render the mirrored scene (used later by water shader)
@@ -360,7 +369,12 @@ export class NaiveRenderer extends renderer.Renderer {
             usage: texUsage,
         });
 
-        this.qLowTransportTex = renderer.device.createTexture({
+        this.qLowTransportTexX = renderer.device.createTexture({
+            size: [this.heightW, this.heightH],
+            format: "r32float",
+            usage: texUsage,
+        });
+        this.qLowTransportTexY = renderer.device.createTexture({
             size: [this.heightW, this.heightH],
             format: "r32float",
             usage: texUsage,
@@ -671,17 +685,30 @@ export class NaiveRenderer extends renderer.Renderer {
             smoothDepth
         );
 
-        this.transportFlowRate = new TransportCS(
+        this.transportFlowRateX = new TransportCS(
             renderer.device,
             this.heightW,
             this.heightH,
-            this.qxLowFreqTexture,  
+            this.qxLowFreqTexture,  // λ_in = qx_low
             this.uXTex,
             this.uYTex,
-            this.qLowTransportTex,  
+            this.qLowTransportTexX, // λ_out_x
             'q',
-            0.25,                    
-            1.0                    
+            0.25,
+            1.0
+        );
+
+        this.transportFlowRateY = new TransportCS(
+            renderer.device,
+            this.heightW,
+            this.heightH,
+            this.qyLowFreqTexture,  // λ_in = qy_low
+            this.uXTex,
+            this.uYTex,
+            this.qLowTransportTexY, // λ_out_y
+            'q',
+            0.25,
+            1.0
         );
 
         this.transportHeight = new TransportCS(
@@ -697,6 +724,30 @@ export class NaiveRenderer extends renderer.Renderer {
             1.0
         );
 
+        this.flowRecombineX = new FlowRecombineCS(
+            renderer.device,
+            this.heightW, this.heightH,
+            this.qLowTransportTexX,     // \bar{q}_x^{t+Δt}
+            this.qxHighFreqTexture,    // \tilde{q}_x^{t+Δt}
+            this.qxTexture             // q_x^{t+Δt}
+        );
+
+        this.flowRecombineY = new FlowRecombineCS(
+            renderer.device,
+            this.heightW, this.heightH,
+            this.qLowTransportTexY,     // \bar{q}_x^{t+Δt}
+            this.qyHighFreqTexture,    // \tilde{q}_x^{t+Δt}
+            this.qyTexture             // q_x^{t+Δt}
+        );
+
+        this.heightRecombine = new HeightRecombineCS(
+            renderer.device,
+            this.heightW, this.heightH,
+            this.hLowTransportTex,    // \bar{h}^{t+3Δt/2}
+            this.highFreqTexture,     // \tilde{h}^{t+3Δt/2}
+            this.heightTexture        // h^{t+3Δt/2}
+        );
+
         this.simulator = new Simulator(
             this.heightW,
             this.heightH,
@@ -705,8 +756,12 @@ export class NaiveRenderer extends renderer.Renderer {
             this.diffuseFluxY,
             this.velocityCS,
             this.airyWaveCS,
-            this.transportFlowRate,
-            this.transportHeight
+            this.transportFlowRateX,
+            this.transportFlowRateY,
+            this.transportHeight,
+            this.flowRecombineX,
+            this.flowRecombineY,
+            this.heightRecombine
         );
     }
 

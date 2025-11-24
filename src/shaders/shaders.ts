@@ -13,6 +13,8 @@ import reconstructHeightRaw from './reconstructHeight.wgsl?raw';
 import airyWaveComputeRaw from './airywave.cs.wgsl?raw';
 import transportComputeRaw from './transport.cs.wgsl?raw';
 import velocityComputeRaw from './velocity.cs.wgsl?raw';
+import flowRecombineComputeRaw from './flowRecombine.cs.wgsl?raw';
+import heightRecombineComputeRaw from './heightRecombine.cs.wgsl?raw';
 
 // CONSTANTS (for use in shaders)
 export const constants = {
@@ -49,3 +51,5 @@ export const reconstructHeightSrc: string = processShaderRaw(reconstructHeightRa
 export const airyWaveComputeSrc: string = processShaderRaw(airyWaveComputeRaw);
 export const transportComputeSrc: string = processShaderRaw(transportComputeRaw);
 export const velocityComputeSrc: string = processShaderRaw(velocityComputeRaw);
+export const flowRecombineComputeSrc: string = processShaderRaw(flowRecombineComputeRaw);
+export const heightRecombineComputeSrc: string = processShaderRaw(heightRecombineComputeRaw);

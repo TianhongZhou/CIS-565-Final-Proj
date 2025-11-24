@@ -2,6 +2,8 @@ import { DiffuseCS } from "./Diffuse";
 import { AiryWaveCS } from "./AiryWaveCS";
 import { TransportCS } from "./Transport";
 import { VelocityCS } from "./Velocity";
+import { FlowRecombineCS } from "./FlowRecombineCS";
+import { HeightRecombineCS } from "./HeightRecombineCS";
 
 export class Simulator {
   W: number;
@@ -11,8 +13,12 @@ export class Simulator {
   private diffuseFluxY: DiffuseCS;
   private velocityCS: VelocityCS;
   private airyCS: AiryWaveCS;
-  private transportFlowRate: TransportCS;
+  private transportFlowRateX: TransportCS;
+  private transportFlowRateY: TransportCS;
   private transportHeight: TransportCS;
+  private flowRecombineX: FlowRecombineCS;
+  private flowRecombineY: FlowRecombineCS;
+  private heightRecombine: HeightRecombineCS;
 
   constructor(
     W: number,
@@ -23,8 +29,12 @@ export class Simulator {
     diffuseFluxY: DiffuseCS,
     velocity: VelocityCS,
     airy: AiryWaveCS,
-    transportFlowRate: TransportCS,
+    transportFlowRateX: TransportCS,
+    transportFlowRateY: TransportCS,
     transportHeight: TransportCS,
+    flowRecombineX: FlowRecombineCS,
+    flowRecombineY: FlowRecombineCS,
+    heightRecombine: HeightRecombineCS
   ) {
     this.W = W;
     this.H = H;
@@ -33,9 +43,12 @@ export class Simulator {
     this.diffuseFluxY  = diffuseFluxY;
     this.velocityCS = velocity;
     this.airyCS = airy;
-    // TODO: transport class needs velocity here
-    this.transportFlowRate = transportFlowRate;
+    this.transportFlowRateX = transportFlowRateX;
+    this.transportFlowRateY = transportFlowRateY;
     this.transportHeight = transportHeight;
+    this.flowRecombineX = flowRecombineX;
+    this.flowRecombineY = flowRecombineY;
+    this.heightRecombine = heightRecombine;
   }
 
   simulateDecompose(dt: GLfloat) {
@@ -54,7 +67,8 @@ export class Simulator {
 
   transportSurface(dt: GLfloat){
     this.velocityCS.step();
-    this.transportFlowRate.step(dt);
+    this.transportFlowRateX.step(dt);
+    this.transportFlowRateY.step(dt);
     this.transportHeight.step(dt);
   }
 
@@ -68,5 +82,10 @@ export class Simulator {
     this.simulateAiry(clampedDt);
 
     this.transportSurface(clampedDt);
+
+    this.flowRecombineX.step();
+    this.flowRecombineY.step();
+
+    this.heightRecombine.step();
   }
 }
