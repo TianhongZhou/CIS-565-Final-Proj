@@ -70,7 +70,7 @@ fn shallowVelocityYStep2(@builtin(global_invocation_id) globalIdx: vec3u) {
     
     let heightStaggeredUp = textureLoad(heightIn, vec2i(ix , clampI(iy + i32(upWindHeight(velYUp)), 0, i32(size.y) - 1))).x;
     let heightCenter = textureLoad(heightIn, vec2i(ix, iy)).x;
-    let heightUp = textureLoad(heightIn, vec2i(clampI(ix + 1, 0, i32(size.x) - 1), iy)).x;
+    let heightUp = textureLoad(heightIn, vec2i(ix, clampI(iy + 1, 0, i32(size.y) - 1))).x;
 
 
     let gravity = 9.80665;
@@ -81,7 +81,11 @@ fn shallowVelocityYStep2(@builtin(global_invocation_id) globalIdx: vec3u) {
     
 
     let prevChangeInVel = textureLoad(changeInVelocityYOut, vec2u(globalIdx.x, globalIdx.y)).x;
-    textureStore(changeInVelocityYOut, vec2u(globalIdx.x, globalIdx.y), vec4f(changeInVelocity + prevChangeInVel, 0, 0, 0));
+
+    var newVel = changeInVelocity + prevChangeInVel;
+    //Clamp to avoid extreme velocities
+    newVel = clamp(newVel, -0.5 * gridScale / timeStep, 0.5 * gridScale / timeStep);
+    textureStore(changeInVelocityYOut, vec2u(globalIdx.x, globalIdx.y), vec4f(newVel, 0, 0, 0));
     
 
 }

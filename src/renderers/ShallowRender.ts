@@ -634,7 +634,7 @@ export class ShallowRenderer extends renderer.Renderer {
                 const idx = y * Wtex + x;
                 const base = Math.sin(x * s + t) * Math.cos(y * s + 0.5 * t);
                 terrainArr[idx] = base;
-                lowArr[idx] = base + 2.0;
+                lowArr[idx] = base * 0.25 + 2.0;
                 highArr[idx] = base + 0.0;
                 fluxInitX[idx] = 0.0;
                 fluxInitY[idx] = 0.0;

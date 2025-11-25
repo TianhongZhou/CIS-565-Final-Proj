@@ -370,6 +370,7 @@ export class ShallowWater {
                     this.ioBindGroupLayout,       // group(0)  previousHeight
                     this.ioBindGroupLayout,       // group(1)  fluxX
                     this.ioBindGroupLayout,       // group(2)  velocityX
+                    this.constsBindGroupLayout,   // group(3)  dt, gridScale
                 ],
             }),
             compute: {
@@ -387,6 +388,7 @@ export class ShallowWater {
                     this.ioBindGroupLayout,       // group(0)  previousHeight
                     this.ioBindGroupLayout,       // group(1)  fluxY
                     this.ioBindGroupLayout,       // group(2)  velocityY
+                    this.constsBindGroupLayout,   // group(3)  dt, gridScale
                 ],
             }),
             compute: {
@@ -536,6 +538,7 @@ export class ShallowWater {
             initialVelocityXPass.setBindGroup(0, this.previousHeightBindGroup);
             initialVelocityXPass.setBindGroup(1, this.fluxXBindGroup);
             initialVelocityXPass.setBindGroup(2, this.velocityXBindGroup);
+            initialVelocityXPass.setBindGroup(3, this.constsBindGroup);
             initialVelocityXPass.dispatchWorkgroups(wgX, wgY);
             initialVelocityXPass.end();
         }
@@ -547,6 +550,7 @@ export class ShallowWater {
             initialVelocityYPass.setBindGroup(0, this.previousHeightBindGroup);
             initialVelocityYPass.setBindGroup(1, this.fluxYBindGroup);
             initialVelocityYPass.setBindGroup(2, this.velocityYBindGroup);
+            initialVelocityYPass.setBindGroup(3, this.constsBindGroup);
             initialVelocityYPass.dispatchWorkgroups(wgX, wgY);
             initialVelocityYPass.end();
         }

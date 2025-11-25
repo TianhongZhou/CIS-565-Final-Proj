@@ -79,7 +79,10 @@ fn shallowVelocityXStep2(@builtin(global_invocation_id) globalIdx: vec3u) {
     
 
     let prevChangeInVel = textureLoad(changeInVelocityXOut, vec2u(globalIdx.x, globalIdx.y)).x;
-    textureStore(changeInVelocityXOut, vec2u(globalIdx.x, globalIdx.y), vec4f(changeInVelocity + prevChangeInVel, 0, 0, 0));
+    var newVel = changeInVelocity + prevChangeInVel;
+    //Clamp to avoid extreme velocities
+    newVel = clamp(newVel, -0.5 * gridScale/timeStep, 0.5 * gridScale/timeStep);
+    textureStore(changeInVelocityXOut, vec2u(globalIdx.x, globalIdx.y), vec4f(newVel, 0, 0, 0));
     
 
 }

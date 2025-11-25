@@ -92,7 +92,10 @@ fn shallowHeight(@builtin(global_invocation_id) globalIdx: vec3u) {
     let changeInHeight = -(heightRight * velXRight - heightLeft * velXLeft + heightUp * velYUp - heightDown * velYDown) / gridScale;
 
     let height = textureLoad(heightIn, vec2i(ix, iy)).x;
-    let newHeight = height + changeInHeight * timeStep;
+    var newHeight = height + changeInHeight * timeStep;
+
+    //Clamp height to be non-negative
+    newHeight = max(newHeight, 0.0);
 
     textureStore(heightOut, vec2i(ix, iy), vec4f(newHeight, 0, 0, 0));
 

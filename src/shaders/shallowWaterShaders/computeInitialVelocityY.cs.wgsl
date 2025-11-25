@@ -2,6 +2,8 @@
 @group(1) @binding(0) var fluxIn: texture_storage_2d<r32float, read_write>;
 @group(2) @binding(0) var velocityOut: texture_storage_2d<r32float, read_write>;
 
+@group(3) @binding(0) var<uniform> timeStep: f32;
+@group(3) @binding(1) var<uniform> gridScale: f32;
 
 fn clampI(v: i32, a: i32, b: i32) -> i32 {
   if (v < a) { return a; }
@@ -58,8 +60,8 @@ fn computeInitialVelocityY(@builtin(global_invocation_id) globalIdx: vec3u) {
     let flux = textureLoad(fluxIn, vec2i(ix, iy)).x;
     
     let prevHeight = textureLoad(previousHeightIn, vec2i(ix, clampI(iy + upWindHeight(flux), 0, i32(size.y) - 1))).x;
-    
+    let velocity = clamp(flux / prevHeight, -0.5 * gridScale / timeStep, 0.5 * gridScale / timeStep);
 
-    textureStore(velocityOut, vec2i(ix, iy), vec4f(flux / prevHeight, 0, 0, 0));
+    textureStore(velocityOut, vec2i(ix, iy), vec4f(velocity, 0, 0, 0));
     
 }
