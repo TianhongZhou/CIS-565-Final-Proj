@@ -31,10 +31,10 @@ const gui = new GUI();
 const stage = new Stage(scene, camera, stats);
 
 // NaiveRenderer
-var renderer: ShallowRenderer | undefined;
+var renderer: NaiveRenderer | undefined;
 
 renderer?.stop();
-renderer = new ShallowRenderer(stage);
+renderer = new NaiveRenderer(stage);
 
 // // DiffuseRender
 // var renderer: DiffuseRenderer | undefined;
