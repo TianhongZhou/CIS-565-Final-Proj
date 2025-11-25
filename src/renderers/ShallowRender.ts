@@ -636,7 +636,7 @@ export class ShallowRenderer extends renderer.Renderer {
                 terrainArr[idx] = base;
                 lowArr[idx] = base * 0.25 + 2.0;
                 highArr[idx] = base + 0.0;
-                fluxInitX[idx] = 0.0;
+                fluxInitX[idx] = 10.0;
                 fluxInitY[idx] = 0.0;
             }
         }

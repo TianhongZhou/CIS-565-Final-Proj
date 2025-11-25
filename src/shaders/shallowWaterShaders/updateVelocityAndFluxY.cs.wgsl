@@ -62,10 +62,13 @@ fn updateVelocityAndFluxY(@builtin(global_invocation_id) globalIdx: vec3u) {
 
     let vel = textureLoad(velocityInOut, vec2i(ix, iy)).x;
     let changeInVel = textureLoad(changeInVelocityIn, vec2i(ix, iy)).x;
-    let newVel = vel + changeInVel * timeStep;
+    var newVel = vel + changeInVel * timeStep;
+
+    newVel = clamp(newVel, -0.25 * gridScale / timeStep, 0.25 * gridScale / timeStep);
 
     let height = textureLoad(heightIn, vec2i(ix, iy + i32(upWindHeight(newVel)))).x;
-    let newFlux = newVel * height;
+    var newFlux = newVel * height;
+    newFlux = clamp(newFlux, -0.25 * gridScale * height / timeStep, 0.25 * gridScale * height / timeStep);
 
     textureStore(velocityInOut, vec2u(globalIdx.x, globalIdx.y), vec4f(newVel, 0, 0, 0));
     textureStore(fluxOut, vec2u(globalIdx.x, globalIdx.y), vec4f(newFlux, 0, 0, 0));
