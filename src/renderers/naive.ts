@@ -31,6 +31,7 @@ export class NaiveRenderer extends renderer.Renderer {
     heightTexture: GPUTexture;
     heightPrevTexture: GPUTexture;
     terrainTexture: GPUTexture;
+    terrainZeroTexture: GPUTexture;
     lowFreqTexture: GPUTexture;
     lowFreqTexturePingpong: GPUTexture;
     highFreqTexture: GPUTexture;
@@ -333,6 +334,12 @@ export class NaiveRenderer extends renderer.Renderer {
             format: "r32float",
             usage: texUsage,
         });
+        
+        this.terrainZeroTexture = renderer.device.createTexture({
+            size: [this.heightW, this.heightH],
+            format: "r32float",
+            usage: texUsage,
+        });
 
         // flux x
         this.qxTexture = renderer.device.createTexture({
@@ -627,6 +634,7 @@ export class NaiveRenderer extends renderer.Renderer {
         this.initRowInfoIfNeeded();
 
         const terrainArr = new Float32Array(this.heightW * this.heightH);
+        const terrainZeroArr = new Float32Array(this.heightW * this.heightH); 
         const lowArr = new Float32Array(this.heightW * this.heightH);
         const highArr = new Float32Array(this.heightW * this.heightH);
 
@@ -646,6 +654,7 @@ export class NaiveRenderer extends renderer.Renderer {
         }
 
         this.updateTexture(terrainArr, this.terrainTexture);
+        this.updateTexture(terrainZeroArr,  this.terrainZeroTexture);
         this.updateTexture(lowArr, this.heightTexture);  
         this.updateTexture(lowArr, this.lowFreqTexture);
         this.updateTexture(lowArr, this.lowFreqTexturePingpong);
@@ -685,7 +694,7 @@ export class NaiveRenderer extends renderer.Renderer {
             this.qxLowFreqTexture,
             this.qxLowFreqTexturePingpong,
             this.qxHighFreqTexture,
-            this.terrainTexture   
+            this.terrainZeroTexture   
         );
 
         this.diffuseFluxY = new DiffuseCS(
@@ -696,7 +705,7 @@ export class NaiveRenderer extends renderer.Renderer {
             this.qyLowFreqTexture,
             this.qyLowFreqTexturePingpong,
             this.qyHighFreqTexture,
-            this.terrainTexture
+            this.terrainZeroTexture
         );
 
         this.velocityCS = new VelocityCS(
@@ -791,6 +800,7 @@ export class NaiveRenderer extends renderer.Renderer {
             this.heightW, this.heightH,
             this.qxLowFreqTexture,     // \bar{q}_x^{t+Δt}
             this.qHighTransportTexX,    // \tilde{q}_x^{t+Δt}
+            // this.qxHighFreqTexture,
             this.qxTexture             // q_x^{t+Δt}
         );
 
@@ -799,6 +809,7 @@ export class NaiveRenderer extends renderer.Renderer {
             this.heightW, this.heightH,
             this.qyLowFreqTexture,     // \bar{q}_x^{t+Δt}
             this.qHighTransportTexY,    // \tilde{q}_x^{t+Δt}
+            // this.qyHighFreqTexture,
             this.qyTexture             // q_x^{t+Δt}
         );
 
@@ -809,6 +820,7 @@ export class NaiveRenderer extends renderer.Renderer {
             this.qxTexture,        // q_x^{t+Δt}
             this.qyTexture,        // q_y^{t+Δt}
             this.hHighTransportTex,  // \tilde h
+            // this.highFreqTexture,
             this.uXTex,            // bulk velocity x
             this.uYTex,            // bulk velocity y
             this.heightTexture,    // h^{t+3Δt/2}
