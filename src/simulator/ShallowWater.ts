@@ -87,6 +87,15 @@ export class ShallowWater {
         this.createBuffersAndLayouts();
         this.createBindGroups();
         this.createPipeline();
+
+        // Initialize prev height
+        const encoder = this.device.createCommandEncoder();
+        encoder.copyTextureToTexture(
+            { texture: this.heightMap },
+            { texture: this.previousHeightMap },
+            { width: this.width, height: this.height, depthOrArrayLayers: 1 }
+        );
+        this.device.queue.submit([encoder.finish()]);
     }
 
     private createBuffersAndLayouts() {

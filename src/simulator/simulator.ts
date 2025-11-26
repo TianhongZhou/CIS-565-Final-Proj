@@ -87,10 +87,10 @@ export class Simulator {
 
     //For shallow water, need to initialize the previous height on first frame so that it's not empty.
     if(this.firstFrame){
-        
+        // Done in ShallowWater.ts
     }
     
-    // this.simulateBulk(clampedDt);
+    this.simulateBulk(clampedDt);
     this.simulateAiry(clampedDt);
 
     this.transportSurface(clampedDt);
