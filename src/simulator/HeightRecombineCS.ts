@@ -1,78 +1,155 @@
 import * as shaders from "../shaders/shaders";
 
 export class HeightRecombineCS {
-  private device: GPUDevice;
-  private width: number;
-  private height: number;
+    private device: GPUDevice;
+    private width: number;
+    private height: number;
 
-  private hBarTex: GPUTexture;
-  private hHighTex: GPUTexture;
-  private hOutTex: GPUTexture;
+    private pipeline: GPUComputePipeline;
+    private ioBindGroupLayout: GPUBindGroupLayout;
+    private constsBindGroupLayout: GPUBindGroupLayout;
+    private bindGroupIO: GPUBindGroup;
+    private bindGroupConsts: GPUBindGroup;
 
-  private ioBGL: GPUBindGroupLayout;
-  private ioBG: GPUBindGroup;
-  private pipeline: GPUComputePipeline;
+    private dtBuffer: GPUBuffer;
+    private gridScaleBuffer: GPUBuffer;
 
-  constructor(
-    device: GPUDevice,
-    width: number,
-    height: number,
-    hBarTex: GPUTexture,
-    hHighTex: GPUTexture,
-    hOutTex: GPUTexture,
-  ) {
-    this.device  = device;
-    this.width   = width;
-    this.height  = height;
-    this.hBarTex = hBarTex;
-    this.hHighTex = hHighTex;
-    this.hOutTex = hOutTex;
+    constructor(
+        device: GPUDevice,
+        width: number,
+        height: number,
+        hPrevTex: GPUTexture,
+        qxTex: GPUTexture,
+        qyTex: GPUTexture,
+        hSurfTex: GPUTexture,
+        uXTex: GPUTexture,
+        uYTex: GPUTexture,
+        hOutTex: GPUTexture,
+        gridScale: number,
+    ) {
+        this.device = device;
+        this.width = width;
+        this.height = height;
 
-    this.ioBGL = device.createBindGroupLayout({
-      label: "height recombine bgl",
-      entries: [
-        { binding: 0, visibility: GPUShaderStage.COMPUTE,
-          storageTexture: { format: "r32float", access: "read-only" } },
-        { binding: 1, visibility: GPUShaderStage.COMPUTE,
-          storageTexture: { format: "r32float", access: "read-only" } },
-        { binding: 2, visibility: GPUShaderStage.COMPUTE,
-          storageTexture: { format: "r32float", access: "write-only" } },
-      ],
-    });
+        this.ioBindGroupLayout = device.createBindGroupLayout({
+          label: "height recombine bgl",
+          entries: [
+            // hPrev
+            {
+              binding: 0,
+              visibility: GPUShaderStage.COMPUTE,
+              texture: { sampleType: "unfilterable-float", viewDimension: "2d" },
+            },
+            // qx
+            {
+              binding: 1,
+              visibility: GPUShaderStage.COMPUTE,
+              texture: { sampleType: "unfilterable-float", viewDimension: "2d" },
+            },
+            // qy
+            {
+              binding: 2,
+              visibility: GPUShaderStage.COMPUTE,
+              texture: { sampleType: "unfilterable-float", viewDimension: "2d" },
+            },
+            // hSurf
+            {
+              binding: 3,
+              visibility: GPUShaderStage.COMPUTE,
+              texture: { sampleType: "unfilterable-float", viewDimension: "2d" },
+            },
+            // uX
+            {
+              binding: 4,
+              visibility: GPUShaderStage.COMPUTE,
+              texture: { sampleType: "unfilterable-float", viewDimension: "2d" },
+            },
+            // uY
+            {
+              binding: 5,
+              visibility: GPUShaderStage.COMPUTE,
+              texture: { sampleType: "unfilterable-float", viewDimension: "2d" },
+            },
+            // hOut storage texture（write-only）
+            {
+              binding: 6,
+              visibility: GPUShaderStage.COMPUTE,
+              storageTexture: {
+                format: "r32float",
+                access: "write-only",
+                viewDimension: "2d",
+              },
+            },
+          ],
+        });
 
-    this.ioBG = device.createBindGroup({
-      layout: this.ioBGL,
-      entries: [
-        { binding: 0, resource: this.hBarTex.createView() },
-        { binding: 1, resource: this.hHighTex.createView() },
-        { binding: 2, resource: this.hOutTex.createView() },
-      ],
-    });
+        this.constsBindGroupLayout = device.createBindGroupLayout({
+            entries: [
+                { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+                { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+            ],
+        });
 
-    this.pipeline = device.createComputePipeline({
-      label: "height recombine pipeline",
-      layout: device.createPipelineLayout({
-        bindGroupLayouts: [this.ioBGL],
-      }),
-      compute: {
-        module: device.createShaderModule({
-          code: shaders.heightRecombineComputeSrc,
-        }),
-        entryPoint: "recombineHeight",
-      },
-    });
-  }
+        this.pipeline = device.createComputePipeline({
+            layout: device.createPipelineLayout({
+                bindGroupLayouts: [this.ioBindGroupLayout, this.constsBindGroupLayout],
+            }),
+            compute: {
+                module: device.createShaderModule({
+                    code: shaders.heightRecombineComputeSrc,
+                }),
+                entryPoint: 'updateHeight',
+            },
+        });
 
-  step() {
-    const encoder = this.device.createCommandEncoder();
-    const pass = encoder.beginComputePass();
-    pass.setPipeline(this.pipeline);
-    pass.setBindGroup(0, this.ioBG);
-    pass.dispatchWorkgroups(
-      Math.ceil(this.width / 8),
-      Math.ceil(this.height / 8)
-    );
-    pass.end();
-    this.device.queue.submit([encoder.finish()]);
-  }
+        this.bindGroupIO = device.createBindGroup({
+            layout: this.ioBindGroupLayout,
+            entries: [
+                { binding: 0, resource: hPrevTex.createView() },
+                { binding: 1, resource: qxTex.createView() },
+                { binding: 2, resource: qyTex.createView() },
+                { binding: 3, resource: hSurfTex.createView() },
+                { binding: 4, resource: uXTex.createView() },
+                { binding: 5, resource: uYTex.createView() },
+                { binding: 6, resource: hOutTex.createView() },
+            ],
+        });
+
+        this.dtBuffer = device.createBuffer({
+            size: 4,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        });
+        this.gridScaleBuffer = device.createBuffer({
+            size: 4,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        });
+
+        this.bindGroupConsts = device.createBindGroup({
+            layout: this.constsBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: this.dtBuffer } },
+                { binding: 1, resource: { buffer: this.gridScaleBuffer } },
+            ],
+        });
+
+        device.queue.writeBuffer(this.gridScaleBuffer, 0, new Float32Array([gridScale]));
+    }
+
+    step(dt: number) {
+        this.device.queue.writeBuffer(this.dtBuffer, 0, new Float32Array([dt]));
+
+        const commandEncoder = this.device.createCommandEncoder();
+        const pass = commandEncoder.beginComputePass();
+        pass.setPipeline(this.pipeline);
+        pass.setBindGroup(0, this.bindGroupIO);
+        pass.setBindGroup(1, this.bindGroupConsts);
+
+        const workgroupSize = 8;
+        const wgX = Math.ceil(this.width  / workgroupSize);
+        const wgY = Math.ceil(this.height / workgroupSize);
+        pass.dispatchWorkgroups(wgX, wgY);
+        pass.end();
+
+        this.device.queue.submit([commandEncoder.finish()]);
+    }
 }

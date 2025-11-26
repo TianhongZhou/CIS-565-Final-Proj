@@ -18,7 +18,7 @@ await initWebGPU();
 setupLoaders();
 
 let scene = new Scene();
-await scene.loadGltf('./scenes/sponza/Sponza.gltf');
+// await scene.loadGltf('./scenes/sponza/Sponza.gltf');
 
 const camera = new Camera();
 
@@ -46,7 +46,7 @@ renderer = new NaiveRenderer(stage);
 // worldScaleXY -> the grid spans [-a,+b] in X and Z (width/depth = 2 units)
 // heightScale  -> amplitude multiplier for heights sampled from the texture
 // baseLevel    -> lifts the whole plane in world Y (0 = centered at origin)
-renderer.setHeightParams(5, 2, 1, constants.water_base_level);
+renderer.setHeightParams(5, 5, 1, constants.water_base_level);
 
 // Initialize GPU height texture and bind groups with the first frame’s data.
 //renderer.updateHeight(arr, W, H);

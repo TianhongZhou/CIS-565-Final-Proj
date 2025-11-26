@@ -29,6 +29,7 @@ export class NaiveRenderer extends renderer.Renderer {
 
     // R32Float texture storing heights (1 float per texel)
     heightTexture: GPUTexture;
+    heightPrevTexture: GPUTexture;
     terrainTexture: GPUTexture;
     lowFreqTexture: GPUTexture;
     lowFreqTexturePingpong: GPUTexture;
@@ -80,9 +81,9 @@ export class NaiveRenderer extends renderer.Renderer {
     private uYTex: GPUTexture;
 
     // Transport output: lambda（ping-pong）
-    private qLowTransportTexX: GPUTexture; 
-    private qLowTransportTexY: GPUTexture;
-    private hLowTransportTex: GPUTexture;   // λ=h
+    private qHighTransportTexX: GPUTexture; 
+    private qHighTransportTexY: GPUTexture;
+    private hHighTransportTex: GPUTexture;   // λ=h
 
     // --- Upload helpers for writeTexture() row alignment ---
     private rowBytes = 0;
@@ -302,6 +303,12 @@ export class NaiveRenderer extends renderer.Renderer {
             usage: texUsage,
         });
 
+        this.heightPrevTexture = renderer.device.createTexture({
+            size: [this.heightW, this.heightH],
+            format: "r32float",
+            usage: texUsage,
+        });
+
         // lowFreq IN
         this.lowFreqTexture = renderer.device.createTexture({
             size: [this.heightW, this.heightH],
@@ -411,17 +418,17 @@ export class NaiveRenderer extends renderer.Renderer {
             usage: texUsage,
         });
 
-        this.qLowTransportTexX = renderer.device.createTexture({
+        this.qHighTransportTexX = renderer.device.createTexture({
             size: [this.heightW, this.heightH],
             format: "r32float",
             usage: texUsage,
         });
-        this.qLowTransportTexY = renderer.device.createTexture({
+        this.qHighTransportTexY = renderer.device.createTexture({
             size: [this.heightW, this.heightH],
             format: "r32float",
             usage: texUsage,
         });
-        this.hLowTransportTex = renderer.device.createTexture({
+        this.hHighTransportTex = renderer.device.createTexture({
             size: [this.heightW, this.heightH],
             format: "r32float",
             usage: texUsage,
@@ -719,7 +726,7 @@ export class NaiveRenderer extends renderer.Renderer {
         this.shallowWater = new ShallowWater(
             renderer.device,
             this.heightW,
-            this.heightW,
+            this.heightH,
             this.lowFreqTexture,
             this.lowFreqPrevHeightTexture,
             this.qxLowFreqTexture,
@@ -744,10 +751,10 @@ export class NaiveRenderer extends renderer.Renderer {
             renderer.device,
             this.heightW,
             this.heightH,
-            this.qxLowFreqTexture,  // λ_in = qx_low
+            this.qxHighFreqTexture,  // λ_in = qx_high
             this.uXTex,
             this.uYTex,
-            this.qLowTransportTexX, // λ_out_x
+            this.qHighTransportTexX, // λ_out_x
             'q',
             0.25,
             1.0
@@ -757,10 +764,10 @@ export class NaiveRenderer extends renderer.Renderer {
             renderer.device,
             this.heightW,
             this.heightH,
-            this.qyLowFreqTexture,  // λ_in = qy_low
+            this.qyHighFreqTexture,  // λ_in = qy_high
             this.uXTex,
             this.uYTex,
-            this.qLowTransportTexY, // λ_out_y
+            this.qHighTransportTexY, // λ_out_y
             'q',
             0.25,
             1.0
@@ -770,10 +777,10 @@ export class NaiveRenderer extends renderer.Renderer {
             renderer.device,
             this.heightW,
             this.heightH,
-            this.lowFreqTexture,    
+            this.highFreqTexture,    
             this.uXTex,
             this.uYTex,
-            this.hLowTransportTex, 
+            this.hHighTransportTex, 
             'h',
             0.25,
             1.0
@@ -782,25 +789,30 @@ export class NaiveRenderer extends renderer.Renderer {
         this.flowRecombineX = new FlowRecombineCS(
             renderer.device,
             this.heightW, this.heightH,
-            this.qLowTransportTexX,     // \bar{q}_x^{t+Δt}
-            this.qxHighFreqTexture,    // \tilde{q}_x^{t+Δt}
+            this.qxLowFreqTexture,     // \bar{q}_x^{t+Δt}
+            this.qHighTransportTexX,    // \tilde{q}_x^{t+Δt}
             this.qxTexture             // q_x^{t+Δt}
         );
 
         this.flowRecombineY = new FlowRecombineCS(
             renderer.device,
             this.heightW, this.heightH,
-            this.qLowTransportTexY,     // \bar{q}_x^{t+Δt}
-            this.qyHighFreqTexture,    // \tilde{q}_x^{t+Δt}
+            this.qyLowFreqTexture,     // \bar{q}_x^{t+Δt}
+            this.qHighTransportTexY,    // \tilde{q}_x^{t+Δt}
             this.qyTexture             // q_x^{t+Δt}
         );
 
         this.heightRecombine = new HeightRecombineCS(
             renderer.device,
             this.heightW, this.heightH,
-            this.hLowTransportTex,    // \bar{h}^{t+3Δt/2}
-            this.highFreqTexture,     // \tilde{h}^{t+3Δt/2}
-            this.heightTexture        // h^{t+3Δt/2}
+            this.heightPrevTexture,   // h_prev
+            this.qxTexture,        // q_x^{t+Δt}
+            this.qyTexture,        // q_y^{t+Δt}
+            this.hHighTransportTex,  // \tilde h
+            this.uXTex,            // bulk velocity x
+            this.uYTex,            // bulk velocity y
+            this.heightTexture,    // h^{t+3Δt/2}
+            1.0   
         );
 
         this.simulator = new Simulator(
@@ -981,6 +993,20 @@ export class NaiveRenderer extends renderer.Renderer {
     // Called every frame before drawing.
     protected override onBeforeDraw(dtMs: number): void {
         const dt = dtMs / 1000; 
+
+        const encoder = renderer.device.createCommandEncoder();
+
+        encoder.copyTextureToTexture(
+            { texture: this.heightTexture },      // src: h^n
+            { texture: this.heightPrevTexture },  // dst: h_prev
+            {
+                width:  this.heightW,
+                height: this.heightH,
+                depthOrArrayLayers: 1,
+            }
+        );
+
+        renderer.device.queue.submit([encoder.finish()]);
 
         this.simulator.simulate(dt);
     }
