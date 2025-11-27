@@ -91,13 +91,13 @@ export class Simulator {
     }
     
     this.simulateBulk(clampedDt);
-    this.simulateAiry(clampedDt);
+    // this.simulateAiry(clampedDt);
 
-    this.transportSurface(clampedDt);
+    // this.transportSurface(clampedDt);
 
-    this.flowRecombineX.step();
-    this.flowRecombineY.step();
+    // this.flowRecombineX.step();
+    // this.flowRecombineY.step();
 
-    this.heightRecombine.step(clampedDt);
+    // this.heightRecombine.step(clampedDt);
   }
 }

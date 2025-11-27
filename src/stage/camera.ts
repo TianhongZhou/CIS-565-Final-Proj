@@ -43,7 +43,7 @@ export class Camera {
     uniformsBuffer: GPUBuffer;
 
     projMat: Mat4 = mat4.create();
-    cameraPos: Vec3 = vec3.create(-7, 2, 0);
+    cameraPos: Vec3 = vec3.create(-7, 12, 0);
     cameraFront: Vec3 = vec3.create(0, 0, -1);
     cameraUp: Vec3 = vec3.create(0, 1, 0);
     cameraRight: Vec3 = vec3.create(1, 0, 0);

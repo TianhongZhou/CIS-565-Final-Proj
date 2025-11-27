@@ -638,18 +638,34 @@ export class NaiveRenderer extends renderer.Renderer {
         const lowArr = new Float32Array(this.heightW * this.heightH);
         const highArr = new Float32Array(this.heightW * this.heightH);
 
-        let t = 0;
-        const s = 0.05;
         const Wtex = this.heightW;
         const Htex = this.heightH;
-
+        const centerX = Wtex / 2;
+        const centerY = Htex / 2;
+        const bumpRadius = Math.min(Wtex, Htex) * 0.1; // Bump covers 20% of domain
+        const bumpHeight = 3.5; // Height of the bump
+        
+        const fluxInitX = new Float32Array(this.heightW * this.heightH);
+        const fluxInitY = new Float32Array(this.heightW * this.heightH);
+        
         for (let y = 0; y < Htex; y++) {
             for (let x = 0; x < Wtex; x++) {
                 const idx = y * Wtex + x;
-                const base = Math.sin(x * s + t) * Math.cos(y * s + 0.5 * t);
-                terrainArr[idx] = base;
-                lowArr[idx] = base + 3.0;
-                highArr[idx] = base + 0.0;
+                
+                // Distance from center
+                const dx = x - centerX;
+                const dy = y - centerY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                // Gaussian bump: h = A * exp(-(r/R)^2)
+                const bump = bumpHeight * Math.exp(-(dist * dist) / (bumpRadius * bumpRadius));
+                
+
+                terrainArr[idx] = 0.0; // Flat terrain
+                lowArr[idx] = bump + 10; // Water height = bump + base level
+                highArr[idx] = 0.0;
+                fluxInitX[idx] = bump * 0.0;
+                fluxInitY[idx] = 0.0;
             }
         }
 
@@ -660,8 +676,6 @@ export class NaiveRenderer extends renderer.Renderer {
         this.updateTexture(lowArr, this.lowFreqTexturePingpong);
         this.updateTexture(highArr, this.highFreqTexture);
 
-        const fluxInitX = new Float32Array(this.heightW * this.heightH);
-        const fluxInitY = new Float32Array(this.heightW * this.heightH);
         this.updateTexture(fluxInitX, this.qxTexture);
         this.updateTexture(fluxInitX, this.qxLowFreqTexture);
         this.updateTexture(fluxInitX, this.qxLowFreqTexturePingpong);
@@ -732,14 +746,29 @@ export class NaiveRenderer extends renderer.Renderer {
             // which would cause problems in the dispersion relation.
             smoothDepth[i] = Math.max(depth, 0.01);
         }
+
+        // this.shallowWater = new ShallowWater(
+        //     renderer.device,
+        //     this.heightW,
+        //     this.heightW,
+        //     this.lowFreqTexture,
+        //     this.lowFreqPrevHeightTexture,
+        //     this.qxLowFreqTexture,
+        //     this.qyLowFreqTexture,
+        //     this.lowFreqVelocityXTexture,
+        //     this.lowFreqVelocityYTexture,
+        //     this.changeInLowFreqVelocityXTexture,
+        //     this.changeInLowFreqVelocityYTexture
+        // );
+        
         this.shallowWater = new ShallowWater(
             renderer.device,
             this.heightW,
             this.heightH,
-            this.lowFreqTexture,
+            this.heightTexture,
             this.lowFreqPrevHeightTexture,
-            this.qxLowFreqTexture,
-            this.qyLowFreqTexture,
+            this.qxTexture,
+            this.qyTexture,
             this.lowFreqVelocityXTexture,
             this.lowFreqVelocityYTexture,
             this.changeInLowFreqVelocityXTexture,
