@@ -24,26 +24,23 @@ fn upWindHeight(vel: f32) -> i32 {
 
 }
 
-//Need to verify that the behavior here is correct, but should probably use this.
-fn sampleTextures(tex: texture_storage_2d<r32float, read_write>, pos: vec2i, size: vec2u, isHeight: bool) -> f32 {
+fn sampleFluxVel(tex: texture_storage_2d<r32float, read_write>, pos: vec2i, size: vec2u) -> f32 {
     var value: f32;
-    //Note: unecessary to check for negative on unsigned ints, it's just a small precaution. Negatives should wrap around to large positive numbers.
+    
     if(pos.x >= i32(size.x) || pos.y >= i32(size.y) || pos.x < 0 || pos.y < 0) {
-        if(isHeight) {
-            value = 4.0;
-        } else {
-            value = 0.0;
-        }
-       
+        value = 0.0;
+        return value;
     }
-    else
-    {
-       value = textureLoad(tex, pos).x;
-    }
+    
+    let clampedPos = vec2i(clampI(pos.x, 0, i32(size.x) - 1), clampI(pos.y, 0, i32(size.y) - 1));
+
+    value = textureLoad(tex, clampedPos).x;
+    
     return value;
     
 
 }
+
 
 @compute
 @workgroup_size(${threadsInDiffusionBlockX}, ${threadsInDiffusionBlockY}, 1)
@@ -56,10 +53,10 @@ fn computeInitialVelocityY(@builtin(global_invocation_id) globalIdx: vec3u) {
     let ix = i32(globalIdx.x);
     let iy = i32(globalIdx.y);
 
-
+    let H_EPS : f32 = 1e-4;
     let flux = textureLoad(fluxIn, vec2i(ix, iy)).x;
     
-    let prevHeight = textureLoad(previousHeightIn, vec2i(ix, clampI(iy + upWindHeight(flux), 0, i32(size.y) - 1))).x;
+    let prevHeight = max(textureLoad(previousHeightIn, vec2i(ix, clampI(iy + upWindHeight(flux), 0, i32(size.y) - 1))).x, H_EPS);
     let velocity = clamp(flux / prevHeight, -0.25 * gridScale / timeStep, 0.25 * gridScale / timeStep);
 
     textureStore(velocityOut, vec2i(ix, iy), vec4f(velocity, 0, 0, 0));

@@ -29,27 +29,22 @@ fn clampI(v: i32, a: i32, b: i32) -> i32 {
 }
 
 
-//Need to verify that the behavior here is correct, but should probably use this.
-fn sampleTextures(tex: texture_storage_2d<r32float, read_write>, pos: vec2i, size: vec2u, isHeight: bool) -> f32 {
+fn sampleFluxVel(tex: texture_storage_2d<r32float, read_write>, pos: vec2i, size: vec2u) -> f32 {
     var value: f32;
-    //Note: unecessary to check for negative on unsigned ints, it's just a small precaution. Negatives should wrap around to large positive numbers.
+    
     if(pos.x >= i32(size.x) || pos.y >= i32(size.y) || pos.x < 0 || pos.y < 0) {
-        if(isHeight) {
-            value = 0.0;
-        } else {
-            value = 0.0;
-        }
-       
+        value = 0.0;
+        return value;
     }
-    else
-    {
-       value = textureLoad(tex, pos).x;
-    }
+    
+    let clampedPos = vec2i(clampI(pos.x, 0, i32(size.x) - 1), clampI(pos.y, 0, i32(size.y) - 1));
+
+    value = textureLoad(tex, clampedPos).x;
+    
     return value;
     
 
 }
-
 
 
 
@@ -64,38 +59,45 @@ fn shallowHeight(@builtin(global_invocation_id) globalIdx: vec3u) {
         return;
     }
 
+    let H_EPS : f32 = 1e-4;
     let ix = i32(globalIdx.x);
     let iy = i32(globalIdx.y);
-
+    /*
     let velXRightIndex = vec2i(ix, iy);
     let velXRight = textureLoad(velocityXIn, velXRightIndex).x;
     let velXUpIndex = vec2i(ix, iy);
     let velYUp = textureLoad(velocityYIn, velXUpIndex).x;
+    */
+    let velXRight = sampleFluxVel(velocityXIn, vec2i(ix, iy), size);
+    let velYUp = sampleFluxVel(velocityYIn, vec2i(ix, iy), size);
 
-
+    /*
     let velXLeftIndex = vec2i(clampI(ix - 1, 0, i32(size.x) - 1), iy);
     let velXLeft = textureLoad(velocityXIn, velXLeftIndex).x;
     let velYDownIndex = vec2i(ix, clampI(iy - 1, 0, i32(size.y) - 1));
 
     let velYDown = textureLoad(velocityYIn, velYDownIndex).x;
-    
+    */
+    let velXLeft = sampleFluxVel(velocityXIn, vec2i(ix - 1, iy), size);
+    let velYDown = sampleFluxVel(velocityYIn, vec2i(ix, iy - 1), size);
+
+
     let heightRightIndex = vec2i(clampI(ix + upWindHeight(velXRight), 0, i32(size.x) - 1), iy);
     let heightLeftIndex = vec2i(clampI(ix - 1 + upWindHeight(velXLeft), 0, i32(size.x) - 1), iy);
-    let heightRight = textureLoad(heightIn, heightRightIndex).x;
-    let heightLeft = textureLoad(heightIn, heightLeftIndex).x;
+    let heightRight = max(textureLoad(heightIn, heightRightIndex).x, H_EPS);
+    let heightLeft = max(textureLoad(heightIn, heightLeftIndex).x, H_EPS);
 
     let heightUpIndex = vec2i(ix, clampI(iy + upWindHeight(velYUp), 0, i32(size.y) - 1));
     let heightDownIndex = vec2i(ix, clampI(iy - 1 + upWindHeight(velYDown), 0, i32(size.y) - 1));
-    let heightUp = textureLoad(heightIn, heightUpIndex).x;
-    let heightDown = textureLoad(heightIn, heightDownIndex).x;
+    let heightUp = max(textureLoad(heightIn, heightUpIndex).x, H_EPS);
+    let heightDown = max(textureLoad(heightIn, heightDownIndex).x, H_EPS);
 
-    let changeInHeight = -(heightRight * velXRight - heightLeft * velXLeft + heightUp * velYUp - heightDown * velYDown) / gridScale;
-
+    var changeInHeight = -(heightRight * velXRight - heightLeft * velXLeft + heightUp * velYUp - heightDown * velYDown) / gridScale;
     let height = textureLoad(heightIn, vec2i(ix, iy)).x;
     var newHeight = height + changeInHeight * timeStep;
 
     //Clamp height to be non-negative
-    newHeight = max(newHeight, 0.0);
+    newHeight = max(newHeight, H_EPS);
 
     textureStore(heightOut, vec2i(ix, iy), vec4f(newHeight, 0, 0, 0));
 
