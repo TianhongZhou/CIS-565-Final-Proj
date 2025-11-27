@@ -19,6 +19,9 @@ export class AiryWaveCS {
     private qxTexture: GPUTexture;
     private qyTexture: GPUTexture;
 
+    // Smooth depth per pixel (uploaded as a texture).
+    private depthTexture: GPUTexture;
+
     // Intermediate textures used to run FFTs on height.
     private hMidTexture: GPUTexture;
     private hTempTexture: GPUTexture;
@@ -107,6 +110,23 @@ export class AiryWaveCS {
             GPUTextureUsage.COPY_SRC |
             GPUTextureUsage.COPY_DST;
 
+        this.depthTexture = this.device.createTexture({
+            size: [width, height, 1],
+            format: 'r32float',
+            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+        });
+
+        const depthData = new Float32Array(smoothDepth as any);
+        this.device.queue.writeTexture(
+            { texture: this.depthTexture },
+            depthData,
+            {
+                bytesPerRow: width * 4,
+                rowsPerImage: height,
+            },
+            { width, height, depthOrArrayLayers: 1 }
+        );
+
         // Scratch textures for height FFT pipeline (real mid + complex ping-pong).
         this.hMidTexture = this.createTexture(width, height, 'r32float', realUsage);
         this.hTempTexture = this.createTexture(width, height, 'rgba32float', complexUsage);
@@ -151,16 +171,17 @@ export class AiryWaveCS {
 
         // FFT uniforms store width/height/count/flags for current pass.
         this.fftUniformArray = new Uint32Array(4);
+        const depthSamples = this.computeDepthSamples(smoothDepth);
         // Flux uniforms: [dt, gravity, domainX, domainY, depth, padding...].
         this.fluxUniformArray = new Float32Array([
-            0.0,
-            9.81,
-            width,
-            height,
-            this.averageDepth,
-            0,
-            0,
-            0,
+            0.0,           // dt 
+            9.81,          // gravity
+            width,         // domainX
+            height,        // domainY
+            depthSamples[0],
+            depthSamples[1],
+            depthSamples[2],
+            depthSamples[3],
         ]);
         device.queue.writeBuffer(
             this.fluxUniformBuffer,
@@ -228,6 +249,11 @@ export class AiryWaveCS {
                 },
                 { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
                 { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+                {
+                    binding: 5,
+                    visibility: GPUShaderStage.COMPUTE,
+                    texture: { sampleType: 'unfilterable-float' },
+                },
             ],
         });
 
@@ -293,6 +319,8 @@ export class AiryWaveCS {
 
         const derivXView = this.derivXTexture.createView();
         const derivYView = this.derivYTexture.createView();
+
+        const depthView = this.depthTexture.createView();
 
         this.averageBindGroup = device.createBindGroup({
             layout: averageLayout,
@@ -423,6 +451,7 @@ export class AiryWaveCS {
                 { binding: 2, resource: qxFreqUpdatedView },
                 { binding: 3, resource: { buffer: this.fluxUniformBuffer } },
                 { binding: 4, resource: { buffer: this.gridUniformBuffer } },
+                { binding: 5, resource: depthView },
             ],
         });
 
@@ -434,6 +463,7 @@ export class AiryWaveCS {
                 { binding: 2, resource: qyFreqUpdatedView },
                 { binding: 3, resource: { buffer: this.fluxUniformBuffer } },
                 { binding: 4, resource: { buffer: this.gridUniformBuffer } },
+                { binding: 5, resource: depthView },
             ],
         });
 
@@ -646,9 +676,47 @@ export class AiryWaveCS {
             return 1.0;
         }
         let sum = 0.0;
+        let count = 0;
         for (let i = 0; i < data.length; i++) {
-            sum += data[i];
+            const d = data[i];
+            if (d > 0) {
+                sum += d;
+                count++;
+            }
         }
-        return Math.max(sum / data.length, 0.01);
+        if (count === 0) return 1.0;
+        return Math.max(sum / count, 0.01);
+    }
+
+    private computeDepthSamples(data: Float32Array): [number, number, number, number] {
+        if (data.length === 0) {
+            return [1.0, 2.0, 4.0, 8.0];
+        }
+
+        let min = Number.POSITIVE_INFINITY;
+        let max = 0.0;
+        for (let i = 0; i < data.length; i++) {
+            const d = data[i];
+            if (d <= 0) continue;
+            if (d < min) min = d;
+            if (d > max) max = d;
+        }
+
+        if (!isFinite(min) || max <= min) {
+            return [1.0, 2.0, 4.0, 8.0];
+        }
+
+        min = Math.max(min, 0.05);    
+        max = Math.max(max, min * 1.01);
+
+        const logMin = Math.log(min);
+        const logMax = Math.log(max);
+
+        const d0 = min;
+        const d3 = max;
+        const d1 = Math.exp(logMin + (logMax - logMin) / 3.0);
+        const d2 = Math.exp(logMin + 2.0 * (logMax - logMin) / 3.0);
+
+        return [d0, d1, d2, d3];
     }
 }

@@ -101,14 +101,14 @@ struct FFTUniforms {
 
 // Uniforms needed by the exponential integrator.
 struct FluxUniforms {
-    dt: f32,
-    gravity: f32,
-    domainX: f32,
-    domainY: f32,
-    depth: f32,
-    pad0: f32,
-    pad1: f32,
-    pad2: f32,
+    dt: f32,    
+    gravity: f32, 
+    domainX: f32,  
+    domainY: f32, 
+    depth0: f32,    // H0
+    depth1: f32,    // H1
+    depth2: f32,    // H2
+    depth3: f32,    // H3
 };
 
 @group(0) @binding(0) var heightMinusTex: texture_2d<f32>;
@@ -231,9 +231,9 @@ fn airyDerivatives(@builtin(global_invocation_id) gid: vec3<u32>) {
 @group(0) @binding(2) var fluxOutputTex: texture_storage_2d<rgba32float, write>;
 @group(0) @binding(3) var<uniform> fluxUniforms: FluxUniforms;
 @group(0) @binding(4) var<uniform> fluxSize: GridSize;
+@group(0) @binding(5) var depthTex: texture_2d<f32>;
 
 // Exponential integrator for q̃ (Algorithm 2).
-// TODO: support multiple depth samples and spatial interpolation like the paper.
 @compute @workgroup_size(8, 8, 1)
 fn airyUpdateFlux(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (gid.x >= fluxSize.width || gid.y >= fluxSize.height) {
@@ -257,7 +257,39 @@ fn airyUpdateFlux(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
 
     let k = sqrt(kSq);
-    let omega = sqrt(fluxUniforms.gravity * k * tanh(k * fluxUniforms.depth));
+    var depthLocal = textureLoad(depthTex, coord, 0).r;
+    depthLocal = max(depthLocal, 0.01);
+
+    let d0 = fluxUniforms.depth0;
+    let d1 = fluxUniforms.depth1;
+    let d2 = fluxUniforms.depth2;
+    let d3 = fluxUniforms.depth3;
+
+    var Ha = d0;
+    var Hb = d1;
+    var w  = 0.0;
+
+    if (depthLocal <= d1) {
+        Ha = d0;
+        Hb = d1;
+        let denom = max(d1 - d0, 1e-6);
+        w = clamp((depthLocal - d0) / denom, 0.0, 1.0);
+    } else if (depthLocal <= d2) {
+        Ha = d1;
+        Hb = d2;
+        let denom = max(d2 - d1, 1e-6);
+        w = clamp((depthLocal - d1) / denom, 0.0, 1.0);
+    } else {
+        Ha = d2;
+        Hb = d3;
+        let denom = max(d3 - d2, 1e-6);
+        w = clamp((depthLocal - d2) / denom, 0.0, 1.0);
+    }
+
+    let omegaA = sqrt(fluxUniforms.gravity * k * tanh(k * Ha));
+    let omegaB = sqrt(fluxUniforms.gravity * k * tanh(k * Hb));
+    let omega  = mix(omegaA, omegaB, w);
+
     if (omega <= 0.0) {
         textureStore(fluxOutputTex, coord, vec4<f32>(qValue, 0.0, 0.0));
         return;

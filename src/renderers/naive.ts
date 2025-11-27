@@ -733,20 +733,6 @@ export class NaiveRenderer extends renderer.Renderer {
             this.uYTex
         );
 
-        /**
-         * Smooth depth field \bar{h}(x,y).
-         * In a full implementation, this should come from the low-frequency
-         * water height minus terrain, i.e. the actual water depth.
-         */
-        const smoothDepth = new Float32Array(this.heightW * this.heightH);
-        for (let i = 0; i < smoothDepth.length; ++i) {
-            // Element-wise difference: water height minus terrain height
-            const depth = lowArr[i] - terrainArr[i];
-            // Clamp to a small positive value to avoid zero / negative depth,
-            // which would cause problems in the dispersion relation.
-            smoothDepth[i] = Math.max(depth, 0.01);
-        }
-
         this.shallowWater = new ShallowWater(
             renderer.device,
             this.heightW,
@@ -774,6 +760,21 @@ export class NaiveRenderer extends renderer.Renderer {
         //     this.changeInLowFreqVelocityXTexture,
         //     this.changeInLowFreqVelocityYTexture
         // );
+
+        
+        /**
+         * Smooth depth field \bar{h}(x,y).
+         * In a full implementation, this should come from the low-frequency
+         * water height minus terrain, i.e. the actual water depth.
+         */
+        const smoothDepth = new Float32Array(this.heightW * this.heightH);
+        for (let i = 0; i < smoothDepth.length; ++i) {
+            // Element-wise difference: water height minus terrain height
+            const depth = lowArr[i] - terrainArr[i];
+            // Clamp to a small positive value to avoid zero / negative depth,
+            // which would cause problems in the dispersion relation.
+            smoothDepth[i] = Math.max(depth, 0.01);
+        }
         
         this.airyWaveCS = new AiryWaveCS(
             renderer.device,
