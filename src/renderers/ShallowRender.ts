@@ -623,20 +623,33 @@ export class ShallowRenderer extends renderer.Renderer {
         const lowArr = new Float32Array(this.heightW * this.heightH);
         const highArr = new Float32Array(this.heightW * this.heightH);
 
-        let t = 0;
-        const s = 0.05;
         const Wtex = this.heightW;
         const Htex = this.heightH;
+        const centerX = Wtex / 2;
+        const centerY = Htex / 2;
+        const bumpRadius = Math.min(Wtex, Htex) * 0.1; // Bump covers 20% of domain
+        const bumpHeight = 3.5; // Height of the bump
+        
         const fluxInitX = new Float32Array(this.heightW * this.heightH);
         const fluxInitY = new Float32Array(this.heightW * this.heightH);
+        
         for (let y = 0; y < Htex; y++) {
             for (let x = 0; x < Wtex; x++) {
                 const idx = y * Wtex + x;
-                const base = Math.sin(x * s + t) * Math.cos(y * s + 0.5 * t);
-                terrainArr[idx] = base;
-                lowArr[idx] = base * 0.25 + 2.0;
-                highArr[idx] = base + 0.0;
-                fluxInitX[idx] = 10.0;
+                
+                // Distance from center
+                const dx = x - centerX;
+                const dy = y - centerY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                // Gaussian bump: h = A * exp(-(r/R)^2)
+                const bump = bumpHeight * Math.exp(-(dist * dist) / (bumpRadius * bumpRadius));
+                
+
+                terrainArr[idx] = 0.0; // Flat terrain
+                lowArr[idx] = bump + 10; // Water height = bump + base level
+                highArr[idx] = 0.0;
+                fluxInitX[idx] = bump * 0.0;
                 fluxInitY[idx] = 0.0;
             }
         }
@@ -1003,8 +1016,15 @@ export class ShallowRenderer extends renderer.Renderer {
 
     // Called every frame before drawing.
     protected override onBeforeDraw(dtMs: number): void {
-        const dt = dtMs / 1000; 
-        this.shallowWater.step(dt);
+        var dt = dtMs / 1000; 
+        dt = Math.min(dt, 0.25);
+        //run the shallow water sim with 10 substeps
+        const substeps = 1;
+        const subDt = dt / substeps;
+        for (let i = 0; i < substeps; i++) {
+            this.shallowWater.step(subDt);
+        }
+        //this.shallowWater.step(dt);
         //this.simulator.simulate(dt);
         
     }
