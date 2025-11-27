@@ -624,7 +624,7 @@ export class ShallowRenderer extends renderer.Renderer {
         const highArr = new Float32Array(this.heightW * this.heightH);
 
         let t = 0;
-        const s = 0.05;
+        const s = 0.15;
         const Wtex = this.heightW;
         const Htex = this.heightH;
         const fluxInitX = new Float32Array(this.heightW * this.heightH);
@@ -632,11 +632,11 @@ export class ShallowRenderer extends renderer.Renderer {
         for (let y = 0; y < Htex; y++) {
             for (let x = 0; x < Wtex; x++) {
                 const idx = y * Wtex + x;
-                const base = Math.sin(x * s + t) * Math.cos(y * s + 0.5 * t);
+                const base = Math.max(0, Math.sin(x * s + t) * Math.cos(y * s + 0.5 * t));
                 terrainArr[idx] = base;
-                lowArr[idx] = base * 0.25 + 2.0;
+                lowArr[idx] = base * 0.5 + 4;
                 highArr[idx] = base + 0.0;
-                fluxInitX[idx] = 10.0;
+                fluxInitX[idx] = 0.0;
                 fluxInitY[idx] = 0.0;
             }
         }
@@ -1003,7 +1003,8 @@ export class ShallowRenderer extends renderer.Renderer {
 
     // Called every frame before drawing.
     protected override onBeforeDraw(dtMs: number): void {
-        const dt = dtMs / 1000; 
+        var dt = dtMs / 1000; 
+        dt = Math.min(dt, 0.25);
         this.shallowWater.step(dt);
         //this.simulator.simulate(dt);
         

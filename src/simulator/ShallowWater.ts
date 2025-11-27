@@ -312,7 +312,7 @@ export class ShallowWater {
             layout: this.ioCombinedBindGroupLayout,
             entries: [
                 { binding: 0, resource: this.velocityYMap.createView() },
-                { binding: 1, resource: this.fluxYMap.createView() },
+                { binding: 1, resource: this.fluxXMap.createView() },
                 { binding: 2, resource: this.previousHeightMap.createView() },
                 { binding: 3, resource: this.changeInVelocityYMap.createView() },
             ],
@@ -321,7 +321,7 @@ export class ShallowWater {
             layout: this.ioCombinedBindGroupLayout,
             entries: [
                 { binding: 0, resource: this.velocityXMap.createView() },
-                { binding: 1, resource: this.fluxXMap.createView() },
+                { binding: 1, resource: this.fluxYMap.createView() },
                 { binding: 2, resource: this.previousHeightMap.createView() },
                 { binding: 3, resource: this.changeInVelocityXMap.createView() },
             ],
@@ -571,16 +571,7 @@ export class ShallowWater {
             );
 
         }
-        //Shallow Height
-        {
-            const shallowHeightPass = encoder.beginComputePass();
-            shallowHeightPass.setPipeline(this.shallowHeightPipeline);
-            shallowHeightPass.setBindGroup(0, this.shallowHeightBindGroup);
-            shallowHeightPass.setBindGroup(1, this.constsBindGroup);
-            shallowHeightPass.dispatchWorkgroups(wgX, wgY);
-            shallowHeightPass.end();
-        }
-        
+
         //Shallow Velocity X Step 1 and 2
         {
             const shallowVelocityXStep1Pass = encoder.beginComputePass();
@@ -615,6 +606,7 @@ export class ShallowWater {
             shallowVelocityYStep2Pass.dispatchWorkgroups(wgX, wgY);
             shallowVelocityYStep2Pass.end();
         }  
+
         //Update Velocity and Flux X and Y 
         {
             const updateVelocityAndFluxXPass = encoder.beginComputePass();
@@ -632,6 +624,21 @@ export class ShallowWater {
             updateVelocityAndFluxYPass.dispatchWorkgroups(wgX, wgY);
             updateVelocityAndFluxYPass.end();
         }
+
+
+
+        //Shallow Height
+        {
+            const shallowHeightPass = encoder.beginComputePass();
+            shallowHeightPass.setPipeline(this.shallowHeightPipeline);
+            shallowHeightPass.setBindGroup(0, this.shallowHeightBindGroup);
+            shallowHeightPass.setBindGroup(1, this.constsBindGroup);
+            shallowHeightPass.dispatchWorkgroups(wgX, wgY);
+            shallowHeightPass.end();
+        }
+        
+        
+        
         this.device.queue.submit([encoder.finish()]);
     }
 
