@@ -17,24 +17,28 @@ struct Heights {
 
 //Note: pos will never be less than 0, so there's a chance that the boundary isn't being handled correctly
 //However, since I'm subtracting 1, the theoretical behavior should make the int wrap, in which case it will for sure be higher than the size.
-fn calculateHeights(pos: vec2u) -> Heights {
-    var heights: Heights; 
-    let size = textureDimensions(diffusionIn);
-    if(pos.x >= size.x || pos.y >= size.y || pos.x < 0 || pos.y < 0) {
-        heights.height = 0;
-        heights.terrain = 0;
-        heights.totalHeight = 0;
-       
-    }
-    else
-    {
-       heights.height = textureLoad(diffusionIn, vec2u(pos.x, pos.y)).x;
-       heights.terrain = textureLoad(terrainHeightIn, vec2u(pos.x, pos.y)).x;
-       heights.totalHeight = heights.height + heights.terrain;
-    }
-    return heights;
-    
+fn loadField(tex: texture_storage_2d<r32float, read_write>, coord: vec2<i32>) -> f32 {
+    let size = textureDimensions(tex);
+    let x = clamp(coord.x, 0, i32(size.x) - 1);
+    let y = clamp(coord.y, 0, i32(size.y) - 1);
+    return textureLoad(tex, vec2<u32>(u32(x), u32(y))).x;
+}
 
+fn loadTerrain(coord: vec2<i32>) -> f32 {
+    let size = textureDimensions(terrainHeightIn);
+    let x = clamp(coord.x, 0, i32(size.x) - 1);
+    let y = clamp(coord.y, 0, i32(size.y) - 1);
+    return textureLoad(terrainHeightIn, vec2<u32>(u32(x), u32(y))).x;
+}
+
+fn calculateHeights(coord: vec2<i32>) -> Heights {
+    var h: Heights;
+    let hVal = loadField(diffusionIn, coord);
+    let tVal = loadTerrain(coord);
+    h.height = hVal;
+    h.terrain = tVal;
+    h.totalHeight = hVal + tVal;
+    return h;
 }
 
 fn calculateAlpha(pos: vec3u, height: f32, deltaHeight: f32) -> f32 {
@@ -70,11 +74,14 @@ fn diffuse(@builtin(global_invocation_id) globalIdx: vec3u) {
     var heightsUp: Heights;
     var heightsDown: Heights;
 
-    heightsCenter = calculateHeights(vec2u(globalIdx.x, globalIdx.y));
-    heightsLeft = calculateHeights(vec2u(globalIdx.x, globalIdx.y) - vec2u(1, 0));
-    heightsRight = calculateHeights(vec2u(globalIdx.x, globalIdx.y) + vec2u(1, 0));
-    heightsUp = calculateHeights(vec2u(globalIdx.x, globalIdx.y) + vec2u(0, 1));
-    heightsDown = calculateHeights(vec2u(globalIdx.x, globalIdx.y) - vec2u(0, 1));
+    let ix = i32(globalIdx.x);
+    let iy = i32(globalIdx.y);
+
+    heightsCenter = calculateHeights(vec2i(ix, iy));
+    heightsLeft = calculateHeights(vec2i(ix - 1, iy));
+    heightsRight = calculateHeights(vec2i(ix + 1, iy));
+    heightsUp = calculateHeights(vec2i(ix, iy + 1));
+    heightsDown = calculateHeights(vec2i(ix, iy - 1));
 
     //Right side of diffusion Equation
     //Note: If grid is now square, this will need to be updated

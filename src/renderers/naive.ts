@@ -747,33 +747,33 @@ export class NaiveRenderer extends renderer.Renderer {
             smoothDepth[i] = Math.max(depth, 0.01);
         }
 
-        // this.shallowWater = new ShallowWater(
-        //     renderer.device,
-        //     this.heightW,
-        //     this.heightW,
-        //     this.lowFreqTexture,
-        //     this.lowFreqPrevHeightTexture,
-        //     this.qxLowFreqTexture,
-        //     this.qyLowFreqTexture,
-        //     this.lowFreqVelocityXTexture,
-        //     this.lowFreqVelocityYTexture,
-        //     this.changeInLowFreqVelocityXTexture,
-        //     this.changeInLowFreqVelocityYTexture
-        // );
-        
         this.shallowWater = new ShallowWater(
             renderer.device,
             this.heightW,
-            this.heightH,
-            this.heightTexture,
+            this.heightW,
+            this.lowFreqTexture,
             this.lowFreqPrevHeightTexture,
-            this.qxTexture,
-            this.qyTexture,
+            this.qxLowFreqTexture,
+            this.qyLowFreqTexture,
             this.lowFreqVelocityXTexture,
             this.lowFreqVelocityYTexture,
             this.changeInLowFreqVelocityXTexture,
             this.changeInLowFreqVelocityYTexture
         );
+        
+        // this.shallowWater = new ShallowWater(
+        //     renderer.device,
+        //     this.heightW,
+        //     this.heightH,
+        //     this.heightTexture,
+        //     this.lowFreqPrevHeightTexture,
+        //     this.qxTexture,
+        //     this.qyTexture,
+        //     this.lowFreqVelocityXTexture,
+        //     this.lowFreqVelocityYTexture,
+        //     this.changeInLowFreqVelocityXTexture,
+        //     this.changeInLowFreqVelocityYTexture
+        // );
         
         this.airyWaveCS = new AiryWaveCS(
             renderer.device,
@@ -829,7 +829,6 @@ export class NaiveRenderer extends renderer.Renderer {
             this.heightW, this.heightH,
             this.qxLowFreqTexture,     // \bar{q}_x^{t+Δt}
             this.qHighTransportTexX,    // \tilde{q}_x^{t+Δt}
-            // this.qxHighFreqTexture,
             this.qxTexture             // q_x^{t+Δt}
         );
 
@@ -838,7 +837,6 @@ export class NaiveRenderer extends renderer.Renderer {
             this.heightW, this.heightH,
             this.qyLowFreqTexture,     // \bar{q}_x^{t+Δt}
             this.qHighTransportTexY,    // \tilde{q}_x^{t+Δt}
-            // this.qyHighFreqTexture,
             this.qyTexture             // q_x^{t+Δt}
         );
 
@@ -849,7 +847,6 @@ export class NaiveRenderer extends renderer.Renderer {
             this.qxTexture,        // q_x^{t+Δt}
             this.qyTexture,        // q_y^{t+Δt}
             this.hHighTransportTex,  // \tilde h
-            // this.highFreqTexture,
             this.uXTex,            // bulk velocity x
             this.uYTex,            // bulk velocity y
             this.heightTexture,    // h^{t+3Δt/2}

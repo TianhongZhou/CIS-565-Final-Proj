@@ -72,7 +72,6 @@ export class Simulator {
   }
 
   transportSurface(dt: GLfloat){
-    this.velocityCS.step();
     this.transportFlowRateX.step(dt);
     this.transportFlowRateY.step(dt);
     this.transportHeight.step(dt);
@@ -85,19 +84,15 @@ export class Simulator {
     const clampedDt = Math.min(dt, 0.25);
     this.simulateDecompose(clampedDt);
 
-    //For shallow water, need to initialize the previous height on first frame so that it's not empty.
-    if(this.firstFrame){
-        // Done in ShallowWater.ts
-    }
-    
     this.simulateBulk(clampedDt);
-    // this.simulateAiry(clampedDt);
+    this.simulateAiry(clampedDt);
 
-    // this.transportSurface(clampedDt);
+    this.velocityCS.step();
+    this.transportSurface(clampedDt);
 
-    // this.flowRecombineX.step();
-    // this.flowRecombineY.step();
+    this.flowRecombineX.step();
+    this.flowRecombineY.step();
 
-    // this.heightRecombine.step(clampedDt);
+    this.heightRecombine.step(clampedDt);
   }
 }
