@@ -108,12 +108,12 @@ fn diffuse(@builtin(global_invocation_id) globalIdx: vec3u) {
     var deltaHeightx = (heightsRight.totalHeight - heightsLeft.totalHeight) / (2.0 * gridScale);
     var deltaHeighty = (heightsUp.totalHeight - heightsDown.totalHeight) / (2.0 * gridScale);
 
-    // var xAlpha =  calculateAlpha(globalIdx, heightsCenter.totalHeight, deltaHeightx);
-    // var yAlpha =  calculateAlpha(globalIdx, heightsCenter.totalHeight, deltaHeighty);
-    var alpha = new_calculateAlpha(globalIdx, heightsCenter.Height, deltaHeightx, deltaHeighty);
+    var xAlpha =  calculateAlpha(globalIdx, heightsCenter.totalHeight, deltaHeightx);
+    var yAlpha =  calculateAlpha(globalIdx, heightsCenter.totalHeight, deltaHeighty);
+    // var alpha = new_calculateAlpha(globalIdx, heightsCenter.Height, deltaHeightx, deltaHeighty);
 
-
-    let diffusedHeight = heightsCenter.totalHeight + timeStep * alpha * (finiteDifferenceHeightX + finiteDifferenceHeightY);
+    let diffusedHeight = heightsCenter.totalHeight + timeStep * (xAlpha * finiteDifferenceHeightX + yAlpha * finiteDifferenceHeightY);
+    // let diffusedHeight = heightsCenter.totalHeight + timeStep * alpha * (finiteDifferenceHeightX + finiteDifferenceHeightY);
 
     let lowFreq = diffusedHeight - heightsCenter.terrain;
 
