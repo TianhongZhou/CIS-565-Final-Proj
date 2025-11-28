@@ -15,7 +15,6 @@ export class AiryWaveCS {
     private height: number;
 
     // Shared textures written by DiffuseCS that represent the high-frequency fields.
-    private heightTexture: GPUTexture;
     private qxTexture: GPUTexture;
     private qyTexture: GPUTexture;
 
@@ -84,7 +83,8 @@ export class AiryWaveCS {
         device: GPUDevice,
         width: number,
         height: number,
-        heightTexture: GPUTexture,
+        heightMinusTex: GPUTexture,   // h^{t-Δt/2}
+        heightPlusTex: GPUTexture,    // h^{t+Δt/2}
         qxTexture: GPUTexture,
         qyTexture: GPUTexture,
         smoothDepth: Float32Array
@@ -92,7 +92,6 @@ export class AiryWaveCS {
         this.device = device;
         this.width = width;
         this.height = height;
-        this.heightTexture = heightTexture;
         this.qxTexture = qxTexture;
         this.qyTexture = qyTexture;
 
@@ -301,8 +300,9 @@ export class AiryWaveCS {
         });
 
         // TODO: heightMinusTex, heightPlusTex are same for now
-        const heightMinusView = this.heightTexture.createView();
-        const heightPlusView = this.heightTexture.createView();
+        const heightMinusView = heightMinusTex.createView(); // h^{t-Δt/2}
+        const heightPlusView  = heightPlusTex.createView();  // h^{t+Δt/2}
+
         const hMidView = this.hMidTexture.createView();
         const hTempView = this.hTempTexture.createView();
         const hFreqView = this.hFreqTexture.createView();

@@ -35,6 +35,7 @@ export class NaiveRenderer extends renderer.Renderer {
     lowFreqTexture: GPUTexture;
     lowFreqTexturePingpong: GPUTexture;
     highFreqTexture: GPUTexture;
+    private highFreqPrevTexture: GPUTexture;
     // non-filtering sampler
     heightSampler: GPUSampler;
     // UBO for HeightConsts (uvTexel, worldScale, heightScale, baseLevel)
@@ -323,6 +324,12 @@ export class NaiveRenderer extends renderer.Renderer {
         });
         // highFreq
         this.highFreqTexture = renderer.device.createTexture({
+            size: [this.heightW, this.heightH],
+            format: "r32float",
+            usage: texUsage,
+        });
+
+        this.highFreqPrevTexture = renderer.device.createTexture({
             size: [this.heightW, this.heightH],
             format: "r32float",
             usage: texUsage,
@@ -675,6 +682,7 @@ export class NaiveRenderer extends renderer.Renderer {
         this.updateTexture(lowArr, this.lowFreqTexture);
         this.updateTexture(lowArr, this.lowFreqTexturePingpong);
         this.updateTexture(highArr, this.highFreqTexture);
+        this.updateTexture(highArr, this.highFreqPrevTexture);
 
         this.updateTexture(fluxInitX, this.qxTexture);
         this.updateTexture(fluxInitX, this.qxLowFreqTexture);
@@ -780,6 +788,7 @@ export class NaiveRenderer extends renderer.Renderer {
             renderer.device,
             this.heightW,
             this.heightH,
+            this.highFreqPrevTexture,
             this.highFreqTexture,
             this.qxHighFreqTexture,
             this.qyHighFreqTexture,
@@ -1043,6 +1052,12 @@ export class NaiveRenderer extends renderer.Renderer {
                 height: this.heightH,
                 depthOrArrayLayers: 1,
             }
+        );
+
+        encoder.copyTextureToTexture(
+            { texture: this.highFreqTexture },
+            { texture: this.highFreqPrevTexture },
+            { width: this.heightW, height: this.heightH, depthOrArrayLayers: 1 }
         );
 
         renderer.device.queue.submit([encoder.finish()]);
