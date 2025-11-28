@@ -123,15 +123,16 @@ fn bicubicSampleLambda(coord: vec2<f32>) -> f32 {
   return cubicCR(r0, r1, r2, r3, ty);
 }
 
-@compute @workgroup_size(8,8)
-fn transport(@builtin(global_invocation_id) gid : vec3<u32>) {
-  let dims = textureDimensions(lambdaIn);
-  let W = i32(dims.x);
-  let H = i32(dims.y);
+@workgroup_size(${threadsInDiffusionBlockX}, ${threadsInDiffusionBlockY}, 1)
+fn transport(@builtin(global_invocation_id) globalIdx : vec3u) {
 
-  let ix = i32(gid.x);
-  let iy = i32(gid.y);
-  if (ix < 0 || ix >= W || iy < 0 || iy >= H) { return; }
+  let size = textureDimensions(diffusionIn);
+  if(globalIdx.x >= size.x || globalIdx.y >= size.y) {
+    return;
+  }
+  
+  let ix = i32(globalIdx.x);
+  let iy = i32(globalIdx.y);
 
   // cell center position in texel space (cell-centered)
   let xc = f32(ix) + 0.5;

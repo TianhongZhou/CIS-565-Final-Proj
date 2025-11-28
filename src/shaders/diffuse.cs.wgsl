@@ -57,6 +57,22 @@ fn calculateAlpha(pos: vec3u, height: f32, deltaHeight: f32) -> f32 {
     return alpha;
 }
 
+fn new_calculateAlpha(pos: vec3u, height: f32, deltaHeightX: f32, deltaHeightY: f32) -> f32 {
+    var alpha: f32;
+    let size = textureDimensions(diffusionIn);
+    if(pos.x >= size.x || pos.y >= size.y || pos.x < 0 || pos.y < 0) {
+        alpha = 0.0;
+       
+    }
+    else {
+        let e = 2.718281828459045;
+        let d = 0.01;
+        let norm = deltaHeightX * deltaHeightX + deltaHeightY + deltaHeightY;
+        alpha = (height * height) / 64.0 * pow(e, -d * norm);
+    }
+    return alpha;
+}
+
 @compute
 @workgroup_size(${threadsInDiffusionBlockX}, ${threadsInDiffusionBlockY}, 1)
 fn diffuse(@builtin(global_invocation_id) globalIdx: vec3u) {
@@ -92,11 +108,12 @@ fn diffuse(@builtin(global_invocation_id) globalIdx: vec3u) {
     var deltaHeightx = (heightsRight.totalHeight - heightsLeft.totalHeight) / (2.0 * gridScale);
     var deltaHeighty = (heightsUp.totalHeight - heightsDown.totalHeight) / (2.0 * gridScale);
 
-    var xAlpha =  calculateAlpha(globalIdx, heightsCenter.totalHeight, deltaHeightx);
-    var yAlpha =  calculateAlpha(globalIdx, heightsCenter.totalHeight, deltaHeighty);
+    // var xAlpha =  calculateAlpha(globalIdx, heightsCenter.totalHeight, deltaHeightx);
+    // var yAlpha =  calculateAlpha(globalIdx, heightsCenter.totalHeight, deltaHeighty);
+    var alpha = new_calculateAlpha(globalIdx, heightsCenter.Height, deltaHeightx, deltaHeighty);
 
 
-    let diffusedHeight = heightsCenter.totalHeight + timeStep * (xAlpha * finiteDifferenceHeightX + yAlpha * finiteDifferenceHeightY);
+    let diffusedHeight = heightsCenter.totalHeight + timeStep * alpha * (finiteDifferenceHeightX + finiteDifferenceHeightY);
 
     let lowFreq = diffusedHeight - heightsCenter.terrain;
 
