@@ -642,6 +642,7 @@ export class NaiveRenderer extends renderer.Renderer {
 
         const terrainArr = new Float32Array(this.heightW * this.heightH);
         const terrainZeroArr = new Float32Array(this.heightW * this.heightH); 
+        const heightArr = new Float32Array(this.heightW * this.heightH);
         const lowArr = new Float32Array(this.heightW * this.heightH);
         const highArr = new Float32Array(this.heightW * this.heightH);
 
@@ -655,30 +656,40 @@ export class NaiveRenderer extends renderer.Renderer {
         const fluxInitX = new Float32Array(this.heightW * this.heightH);
         const fluxInitY = new Float32Array(this.heightW * this.heightH);
         
+        const highAmp = 0.5;     
+        const freq = 16.0;     
+
         for (let y = 0; y < Htex; y++) {
             for (let x = 0; x < Wtex; x++) {
                 const idx = y * Wtex + x;
-                
-                // Distance from center
-                const dx = x - centerX;
-                const dy = y - centerY;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                
-                // Gaussian bump: h = A * exp(-(r/R)^2)
-                const bump = bumpHeight * Math.exp(-(dist * dist) / (bumpRadius * bumpRadius));
-                
 
-                terrainArr[idx] = 0.0; // Flat terrain
-                lowArr[idx] = bump + 10; // Water height = bump + base level
-                highArr[idx] = 0.0;
-                fluxInitX[idx] = bump * 0.0;
-                fluxInitY[idx] = 0.0;
+                const dx   = x - centerX;
+                const dy   = y - centerY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const bump = bumpHeight * Math.exp(-(dist * dist) / (bumpRadius * bumpRadius));
+
+                const baseWater = bump + 10.0;  
+
+                const u = x / Wtex;
+                const v = y / Htex;
+                const wave =
+                    highAmp *
+                    Math.sin(freq * Math.PI * u) *
+                    Math.sin(freq * Math.PI * v);
+
+                terrainArr[idx] = 0.0;
+
+                lowArr[idx]  = baseWater;
+
+                highArr[idx] = wave;
+
+                heightArr[idx] = baseWater + wave;
             }
         }
 
         this.updateTexture(terrainArr, this.terrainTexture);
         this.updateTexture(terrainZeroArr,  this.terrainZeroTexture);
-        this.updateTexture(lowArr, this.heightTexture);  
+        this.updateTexture(heightArr, this.heightTexture);  
         this.updateTexture(lowArr, this.lowFreqTexture);
         this.updateTexture(lowArr, this.lowFreqTexturePingpong);
         this.updateTexture(highArr, this.highFreqTexture);
@@ -1062,7 +1073,7 @@ export class NaiveRenderer extends renderer.Renderer {
 
         renderer.device.queue.submit([encoder.finish()]);
 
-        this.simulator.simulate(dt);
+        this.simulator.simulate(1.0/60.0);
     }
 
     private updateReflectionUniforms() {

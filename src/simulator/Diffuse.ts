@@ -243,7 +243,7 @@ export class DiffuseCS {
             }
         );
         //Note: since we're pingponging, must have an even number of substeps
-        for(let i = 0; i < 128; i++)
+        for(let i = 0; i < 64; i++)
         {
             const diffusePass = encoder.beginComputePass();
             diffusePass.setPipeline(this.diffusePipeline);
