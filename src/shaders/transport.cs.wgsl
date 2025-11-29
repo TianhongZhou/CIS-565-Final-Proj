@@ -123,10 +123,11 @@ fn bicubicSampleLambda(coord: vec2<f32>) -> f32 {
   return cubicCR(r0, r1, r2, r3, ty);
 }
 
+@compute
 @workgroup_size(${threadsInDiffusionBlockX}, ${threadsInDiffusionBlockY}, 1)
 fn transport(@builtin(global_invocation_id) globalIdx : vec3u) {
 
-  let size = textureDimensions(diffusionIn);
+  let size = textureDimensions(lambdaIn);
   if(globalIdx.x >= size.x || globalIdx.y >= size.y) {
     return;
   }
