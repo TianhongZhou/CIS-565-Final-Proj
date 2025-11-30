@@ -28,7 +28,7 @@ import shallowVelocityYStep2 from './shallowWaterShaders/shallowVelocityYStep2.c
 import updateVelocityAndFluxX from './shallowWaterShaders/updateVelocityAndFluxX.cs.wgsl?raw';
 import updateVelocityAndFluxY from './shallowWaterShaders/updateVelocityAndFluxY.cs.wgsl?raw';
 
-
+import addOn from './addOn.cs.wgsl?raw';
 
 
 // CONSTANTS (for use in shaders)
@@ -81,4 +81,4 @@ export const shallowVelocityYStep2Src: string = processShaderRaw(shallowVelocity
 export const updateVelocityAndFluxXSrc: string = processShaderRaw(updateVelocityAndFluxX);
 export const updateVelocityAndFluxYSrc: string = processShaderRaw(updateVelocityAndFluxY);
 
-
+export const addOnSrc: string = processShaderRaw(addOn);

@@ -12,6 +12,7 @@ import { TransportCS } from '../simulator/Transport';
 import { VelocityCS } from '../simulator/Velocity';
 import { FlowRecombineCS } from '../simulator/FlowRecombineCS';
 import { HeightRecombineCS } from '../simulator/HeightRecombineCS';
+import { AddOnCS } from "../simulator/AddOnCs";
 
 export class NaiveRenderer extends renderer.Renderer {
     sceneUniformsBindGroupLayout: GPUBindGroupLayout;
@@ -161,6 +162,9 @@ export class NaiveRenderer extends renderer.Renderer {
     private passFlagsBindGroupReflection: GPUBindGroup;
     private passFlagsBindGroupMain: GPUBindGroup;
 
+    private heightAddCS: AddOnCS;
+    private bumpTexture: GPUTexture;
+
     constructor(stage: Stage) {
         super(stage);
 
@@ -192,6 +196,16 @@ export class NaiveRenderer extends renderer.Renderer {
             usage: GPUTextureUsage.RENDER_ATTACHMENT
         });
         this.depthTextureView = this.depthTexture.createView();
+
+        this.bumpTexture = renderer.device.createTexture({
+            size: [this.heightW, this.heightH],
+            format: "r32float",
+            usage: GPUTextureUsage.TEXTURE_BINDING |
+                GPUTextureUsage.COPY_DST |
+                GPUTextureUsage.STORAGE_BINDING,
+        });
+
+        this.heightAddCS = new AddOnCS(renderer.device);
 
         // --- PassFlags: tiny UBO telling the material shader which pass is active ---
         this.passFlagsBindGroupLayout = renderer.device.createBindGroupLayout({
@@ -1230,21 +1244,30 @@ export class NaiveRenderer extends renderer.Renderer {
         const cx = u * (this.heightW - 1);
         const cy = v * (this.heightH - 1);
         const radius = Math.ceil(3 * sigma);
-        for (let y = Math.max(0, Math.floor(cy - radius)); y <= Math.min(this.heightH - 1, Math.ceil(cy + radius)); y++) {
-            for (let x = Math.max(0, Math.floor(cx - radius)); x <= Math.min(this.heightW - 1, Math.ceil(cx + radius)); x++) {
+
+        const bumpArr = new Float32Array(this.heightW * this.heightH);
+
+        for (let y = Math.max(0, Math.floor(cy - radius));
+                y <= Math.min(this.heightH - 1, Math.ceil(cy + radius)); y++) {
+            for (let x = Math.max(0, Math.floor(cx - radius));
+                    x <= Math.min(this.heightW - 1, Math.ceil(cx + radius)); x++) {
+
                 const dx = x - cx;
                 const dy = y - cy;
                 const dist2 = dx * dx + dy * dy;
+
                 const bump = amplitude * Math.exp(-dist2 / (2 * sigma * sigma));
                 const idx = y * this.heightW + x;
-                this.heightArr[idx] += bump;
-                this.lowArr[idx] += bump;
+
+                bumpArr[idx] += bump;
             }
         }
-        this.updateTexture(this.heightArr, this.heightTexture);
-        this.updateTexture(this.heightArr, this.heightPrevTexture);
-        this.updateTexture(this.lowArr, this.lowFreqTexture);
-        this.updateTexture(this.lowArr, this.lowFreqTexturePingpong);
+
+        this.updateTexture(bumpArr, this.bumpTexture);
+        
+        this.heightAddCS.run(this.heightTexture, this.bumpTexture, this.heightW, this.heightH);
+        this.heightAddCS.run(this.lowFreqTexture, this.bumpTexture, this.heightW, this.heightH);
+        this.heightAddCS.run(this.heightPrevTexture, this.bumpTexture, this.heightW, this.heightH);
     }
 
     // Adds bump based on screen coordinates (clientX/Y) -> water plane intersection
