@@ -43,6 +43,11 @@ export class Camera {
     uniformsBuffer: GPUBuffer;
 
     projMat: Mat4 = mat4.create();
+
+    viewMat: Mat4 = mat4.create();
+    viewProjMat: Mat4 = mat4.create();
+    invViewProjMat: Mat4 = mat4.create();
+
     cameraPos: Vec3 = vec3.create(-7, 12, 0);
     cameraFront: Vec3 = vec3.create(0, 0, -1);
     cameraUp: Vec3 = vec3.create(0, 1, 0);
@@ -156,13 +161,14 @@ export class Camera {
         this.processInput(deltaTime);
 
         const lookPos = vec3.add(this.cameraPos, vec3.scale(this.cameraFront, 1));
-        const viewMat = mat4.lookAt(this.cameraPos, lookPos, [0, 1, 0]);
-        const viewProjMat = mat4.mul(this.projMat, viewMat);
         
-        this.uniforms.viewProjMat = viewProjMat;
+        this.viewMat = mat4.lookAt(this.cameraPos, lookPos, [0, 1, 0]);
+        this.viewProjMat = mat4.mul(this.projMat, this.viewMat);
+        this.invViewProjMat = mat4.inverse(this.viewProjMat);
 
-        this.uniforms.viewMat = viewMat;
-        this.uniforms.invViewMat = mat4.inverse(viewMat);
+        this.uniforms.viewProjMat = this.viewProjMat;
+        this.uniforms.viewMat     = this.viewMat;
+        this.uniforms.invViewMat  = mat4.inverse(this.viewMat);
 
         device.queue.writeBuffer(this.uniformsBuffer, 0, this.uniforms.buffer);
     }

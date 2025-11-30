@@ -1,7 +1,7 @@
 import * as renderer from '../renderer';
 import * as shaders from '../shaders/shaders';
 import { Stage } from '../stage/stage';
-import { mat4, vec3 } from "wgpu-matrix";
+import { mat4, vec3, Vec3 } from "wgpu-matrix";
 import { Camera, CameraUniforms } from '../stage/camera';
 import { DiffuseCS } from '../simulator/Diffuse';
 import { Simulator } from '../simulator/simulator';
@@ -92,6 +92,14 @@ export class NaiveRenderer extends renderer.Renderer {
     private paddedBytesPerRow = 0;
     private uploadScratch: Uint8Array | null = null;
 
+    // CPU-side caches for click scene perturbations
+    private heightArr: Float32Array;
+    private lowArr: Float32Array;
+
+    // Cached water extents for screen->world mapping
+    private waterScaleX = 10;
+    private waterScaleZ = 10;
+
     // Diffuse compute
     private diffuseHeight: DiffuseCS;
     private diffuseFluxX: DiffuseCS;
@@ -143,8 +151,6 @@ export class NaiveRenderer extends renderer.Renderer {
     private envBindGroupLayout: GPUBindGroupLayout;
     private envBindGroup: GPUBindGroup;
     private skyboxPipeline: GPURenderPipeline;
-
-    private waterBaseLevel: number = 0;
 
     // --- Pass flags ---
     // UBO for the reflection pass (isReflection = 1)
@@ -702,8 +708,8 @@ export class NaiveRenderer extends renderer.Renderer {
 
         const terrainArr = new Float32Array(this.heightW * this.heightH);
         const terrainZeroArr = new Float32Array(this.heightW * this.heightH); 
-        const heightArr = new Float32Array(this.heightW * this.heightH);
-        const lowArr = new Float32Array(this.heightW * this.heightH);
+        this.heightArr = new Float32Array(this.heightW * this.heightH);
+        this.lowArr = new Float32Array(this.heightW * this.heightH);
         const highArr = new Float32Array(this.heightW * this.heightH);
 
         const Wtex = this.heightW;
@@ -739,19 +745,19 @@ export class NaiveRenderer extends renderer.Renderer {
 
                 terrainArr[idx] = 0.0;
 
-                lowArr[idx]  = baseWater;
+                this.lowArr[idx]  = baseWater;
 
                 highArr[idx] = wave;
 
-                heightArr[idx] = baseWater + 0.0;
+                this.heightArr[idx] = baseWater + 0.0;
             }
         }
 
         this.updateTexture(terrainArr, this.terrainTexture);
         this.updateTexture(terrainZeroArr,  this.terrainZeroTexture);
-        this.updateTexture(heightArr, this.heightTexture);  
-        this.updateTexture(lowArr, this.lowFreqTexture);
-        this.updateTexture(lowArr, this.lowFreqTexturePingpong);
+        this.updateTexture(this.heightArr, this.heightTexture);  
+        this.updateTexture(this.lowArr, this.lowFreqTexture);
+        this.updateTexture(this.lowArr, this.lowFreqTexturePingpong);
         this.updateTexture(highArr, this.highFreqTexture);
         this.updateTexture(highArr, this.highFreqPrevTexture);
 
@@ -849,7 +855,7 @@ export class NaiveRenderer extends renderer.Renderer {
         const smoothDepth = new Float32Array(this.heightW * this.heightH);
         for (let i = 0; i < smoothDepth.length; ++i) {
             // Element-wise difference: water height minus terrain height
-            const depth = lowArr[i] - terrainArr[i];
+            const depth = this.lowArr[i] - terrainArr[i];
             // Clamp to a small positive value to avoid zero / negative depth,
             // which would cause problems in the dispersion relation.
             smoothDepth[i] = Math.max(depth, 0.01);
@@ -1065,6 +1071,8 @@ export class NaiveRenderer extends renderer.Renderer {
         renderer.device.queue.writeBuffer(this.heightConsts, 8,  new Float32Array([sx, sz]));
         renderer.device.queue.writeBuffer(this.heightConsts, 16, new Float32Array([heightScale]));
         renderer.device.queue.writeBuffer(this.heightConsts, 20, new Float32Array([0.0]));
+        this.waterScaleX = sx;
+        this.waterScaleZ = sz;
     }
 
     // Prepare per-frame upload helpers based on current (heightW, heightH).
@@ -1149,7 +1157,7 @@ export class NaiveRenderer extends renderer.Renderer {
         const front = mainCam.cameraFront; 
         const up = mainCam.cameraUp;        
 
-        const h = this.waterBaseLevel; 
+        const h = shaders.constants.water_base_level; 
 
         // Mirror the camera position and orientation across the plane y = h.
         // For a horizontal plane, reflection is:
@@ -1199,6 +1207,95 @@ export class NaiveRenderer extends renderer.Renderer {
             viewProjRef.byteOffset,   
             viewProjRef.byteLength
         );
+    }
+
+    // --- Public helpers for click scene ---
+    // Resets water to flat base level with no bumps/high frequency content.
+    public resetWaterFlat() {
+        const base = shaders.constants.water_base_level;
+        this.heightArr.fill(base);
+        this.lowArr.fill(base);
+        const zeroHigh = new Float32Array(this.heightW * this.heightH);
+
+        this.updateTexture(this.heightArr, this.heightTexture);
+        this.updateTexture(this.heightArr, this.heightPrevTexture);
+        this.updateTexture(this.lowArr, this.lowFreqTexture);
+        this.updateTexture(this.lowArr, this.lowFreqTexturePingpong);
+        this.updateTexture(zeroHigh, this.highFreqTexture);
+        this.updateTexture(zeroHigh, this.highFreqPrevTexture);
+    }
+
+    // Adds a Gaussian bump at normalized UV (0..1) into the height/low fields.
+    public addClickBump(u: number, v: number, amplitude = 3.0, sigma = 8.0) {
+        const cx = u * (this.heightW - 1);
+        const cy = v * (this.heightH - 1);
+        const radius = Math.ceil(3 * sigma);
+        for (let y = Math.max(0, Math.floor(cy - radius)); y <= Math.min(this.heightH - 1, Math.ceil(cy + radius)); y++) {
+            for (let x = Math.max(0, Math.floor(cx - radius)); x <= Math.min(this.heightW - 1, Math.ceil(cx + radius)); x++) {
+                const dx = x - cx;
+                const dy = y - cy;
+                const dist2 = dx * dx + dy * dy;
+                const bump = amplitude * Math.exp(-dist2 / (2 * sigma * sigma));
+                const idx = y * this.heightW + x;
+                this.heightArr[idx] += bump;
+                this.lowArr[idx] += bump;
+            }
+        }
+        this.updateTexture(this.heightArr, this.heightTexture);
+        this.updateTexture(this.heightArr, this.heightPrevTexture);
+        this.updateTexture(this.lowArr, this.lowFreqTexture);
+        this.updateTexture(this.lowArr, this.lowFreqTexturePingpong);
+    }
+
+    // Adds bump based on screen coordinates (clientX/Y) -> water plane intersection
+    public addClickBumpFromScreen(clientX: number, clientY: number, rect: DOMRect, amp = 3.0, sigma = 8.0) {
+        const ndcX = ((clientX - rect.left) / rect.width) * 2 - 1;
+        const ndcY = 1 - ((clientY - rect.top) / rect.height) * 2;
+
+        const invViewProj = this.camera.invViewProjMat;
+
+        const clipNear: [number, number, number, number] = [ndcX, ndcY, 0, 1];
+        const clipFar:  [number, number, number, number] = [ndcX, ndcY, 1, 1];
+
+        const worldNear4 = this.mulMat4Vec4(invViewProj, clipNear);
+        const worldFar4  = this.mulMat4Vec4(invViewProj, clipFar);
+
+        const worldNear: Vec3 = vec3.fromValues(
+            worldNear4[0] / worldNear4[3],
+            worldNear4[1] / worldNear4[3],
+            worldNear4[2] / worldNear4[3],
+        );
+        const worldFar: Vec3 = vec3.fromValues(
+            worldFar4[0] / worldFar4[3],
+            worldFar4[1] / worldFar4[3],
+            worldFar4[2] / worldFar4[3],
+        );
+
+        const worldDir = vec3.normalize(vec3.sub(worldFar, worldNear));
+        const rayOrigin: Vec3 = this.camera.cameraPos;
+
+        const denom = worldDir[1];
+        if (Math.abs(denom) < 1e-4) return;
+
+        const t = (shaders.constants.water_base_level - rayOrigin[1]) / denom;
+        if (t <= 0) return;
+
+        const hit = vec3.add(rayOrigin, vec3.scale(worldDir, t));
+
+        const u = hit[0] / (2 * this.waterScaleX) + 0.5;
+        const v = hit[2] / (2 * this.waterScaleZ) + 0.5;
+        if (u < 0 || u > 1 || v < 0 || v > 1) return;
+        this.addClickBump(u, v, amp, sigma);
+    }
+
+    private mulMat4Vec4(m: Float32Array, v: [number, number, number, number]): [number, number, number, number] {
+        const x = v[0], y = v[1], z = v[2], w = v[3];
+        return [
+            m[0] * x + m[4] * y + m[8]  * z + m[12] * w,
+            m[1] * x + m[5] * y + m[9]  * z + m[13] * w,
+            m[2] * x + m[6] * y + m[10] * z + m[14] * w,
+            m[3] * x + m[7] * y + m[11] * z + m[15] * w,
+        ];
     }
 
     private createPlaceholderEnvTexture(): GPUTexture {
