@@ -82,17 +82,17 @@ export class Simulator {
 
     //Run this 128 times, making sure to clamp dt to 0.25
     const clampedDt = Math.min(dt, 0.25);
-    this.simulateDecompose(clampedDt);
+    // this.simulateDecompose(clampedDt);
 
     this.simulateBulk(clampedDt);
-    this.simulateAiry(clampedDt);
+    // this.simulateAiry(clampedDt);
 
-    this.velocityCS.step();
-    this.transportSurface(clampedDt);
+    // this.velocityCS.step();
+    // this.transportSurface(clampedDt);
 
-    this.flowRecombineX.step();
-    this.flowRecombineY.step();
+    // this.flowRecombineX.step();
+    // this.flowRecombineY.step();
 
-    this.heightRecombine.step(clampedDt);
+    // this.heightRecombine.step(clampedDt);
   }
 }

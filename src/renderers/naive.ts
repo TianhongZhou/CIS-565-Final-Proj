@@ -137,6 +137,13 @@ export class NaiveRenderer extends renderer.Renderer {
     private reflectionBindGroupLayout: GPUBindGroupLayout;
     private reflectionBindGroup: GPUBindGroup;
 
+    // Environment map (equirectangular HDR)
+    private envTexture: GPUTexture;
+    private envSampler: GPUSampler;
+    private envBindGroupLayout: GPUBindGroupLayout;
+    private envBindGroup: GPUBindGroup;
+    private skyboxPipeline: GPURenderPipeline;
+
     private waterBaseLevel: number = 0;
 
     // --- Pass flags ---
@@ -500,10 +507,13 @@ export class NaiveRenderer extends renderer.Renderer {
         const h = renderer.canvas.height;
 
         // Color texture where the reflection pass renders the mirrored scene.
-        // The water shader later samples from this.
+        // Slightly higher resolution to reduce edge sampling artifacts after UV shrink.
+        const reflectionScale = 2.0;
+        const reflW = Math.max(1, Math.floor(w * reflectionScale));
+        const reflH = Math.max(1, Math.floor(h * reflectionScale));
         this.reflectionTexture = renderer.device.createTexture({
             label: "reflection color",
-            size: [w, h],
+            size: [reflW, reflH],
             format: renderer.canvasFormat,
             usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
         });
@@ -512,7 +522,7 @@ export class NaiveRenderer extends renderer.Renderer {
         // Depth texture used only in the reflection pass
         this.reflectionDepthTexture = renderer.device.createTexture({
             label: "reflection depth",
-            size: [w, h],
+            size: [reflW, reflH],
             format: "depth24plus",
             usage: GPUTextureUsage.RENDER_ATTACHMENT,
         });
@@ -589,6 +599,56 @@ export class NaiveRenderer extends renderer.Renderer {
                 { binding: 1, resource: this.reflectionTextureView },
                 { binding: 2, resource: { buffer: this.reflectionViewProjBuffer } },
             ],
+        });
+
+        // Environment map bindings (equirectangular 2D)
+        this.envSampler = renderer.device.createSampler({
+            label: "env sampler",
+            magFilter: "linear",
+            minFilter: "linear",
+            mipmapFilter: "linear",
+        });
+        this.envTexture = this.createPlaceholderEnvTexture();
+        this.envBindGroupLayout = renderer.device.createBindGroupLayout({
+            label: "env bind group layout",
+            entries: [
+                { binding: 0, visibility: GPUShaderStage.FRAGMENT, sampler: { type: "filtering" } },
+                { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "float" } },
+            ],
+        });
+        this.envBindGroup = renderer.device.createBindGroup({
+            label: "env bind group",
+            layout: this.envBindGroupLayout,
+            entries: [
+                { binding: 0, resource: this.envSampler },
+                { binding: 1, resource: this.envTexture.createView() },
+            ],
+        });
+        // Kick async HDR load; placeholder is used until finished.
+        const envUrl = new URL("../../scenes/envmap/Frozen_Waterfall_Ref.hdr", import.meta.url).href;
+        this.initEnvironmentMap(envUrl);
+
+        // Skybox pipeline (uses camera + env)
+        this.skyboxPipeline = renderer.device.createRenderPipeline({
+            label: "skybox pipeline",
+            layout: renderer.device.createPipelineLayout({
+                bindGroupLayouts: [this.sceneUniformsBindGroupLayout, this.envBindGroupLayout],
+            }),
+            vertex: {
+                module: renderer.device.createShaderModule({ code: shaders.skyboxVertSrc }),
+                entryPoint: "vs_main",
+            },
+            fragment: {
+                module: renderer.device.createShaderModule({ code: shaders.skyboxFragSrc }),
+                entryPoint: "fs_main",
+                targets: [{ format: renderer.canvasFormat }],
+            },
+            depthStencil: {
+                format: "depth24plus",
+                depthWriteEnabled: false,
+                depthCompare: "less-equal",
+            },
+            primitive: { topology: "triangle-list" },
         });
 
         // Pipeline used to render the water surface (height-displaced grid).
@@ -668,7 +728,7 @@ export class NaiveRenderer extends renderer.Renderer {
                 const dist = Math.sqrt(dx * dx + dy * dy);
                 const bump = bumpHeight * Math.exp(-(dist * dist) / (bumpRadius * bumpRadius));
 
-                const baseWater = bump + 10.0;  
+                const baseWater = shaders.constants.water_base_level + bump; 
 
                 const u = x / Wtex;
                 const v = y / Htex;
@@ -683,7 +743,7 @@ export class NaiveRenderer extends renderer.Renderer {
 
                 highArr[idx] = wave;
 
-                heightArr[idx] = baseWater + wave;
+                heightArr[idx] = baseWater + 0.0;
             }
         }
 
@@ -752,33 +812,33 @@ export class NaiveRenderer extends renderer.Renderer {
             this.uYTex
         );
 
-        this.shallowWater = new ShallowWater(
-            renderer.device,
-            this.heightW,
-            this.heightW,
-            this.lowFreqTexture,
-            this.lowFreqPrevHeightTexture,
-            this.qxLowFreqTexture,
-            this.qyLowFreqTexture,
-            this.lowFreqVelocityXTexture,
-            this.lowFreqVelocityYTexture,
-            this.changeInLowFreqVelocityXTexture,
-            this.changeInLowFreqVelocityYTexture
-        );
-        
         // this.shallowWater = new ShallowWater(
         //     renderer.device,
         //     this.heightW,
-        //     this.heightH,
-        //     this.heightTexture,
+        //     this.heightW,
+        //     this.lowFreqTexture,
         //     this.lowFreqPrevHeightTexture,
-        //     this.qxTexture,
-        //     this.qyTexture,
+        //     this.qxLowFreqTexture,
+        //     this.qyLowFreqTexture,
         //     this.lowFreqVelocityXTexture,
         //     this.lowFreqVelocityYTexture,
         //     this.changeInLowFreqVelocityXTexture,
         //     this.changeInLowFreqVelocityYTexture
         // );
+        
+        this.shallowWater = new ShallowWater(
+            renderer.device,
+            this.heightW,
+            this.heightH,
+            this.heightTexture,
+            this.lowFreqPrevHeightTexture,
+            this.qxTexture,
+            this.qyTexture,
+            this.lowFreqVelocityXTexture,
+            this.lowFreqVelocityYTexture,
+            this.changeInLowFreqVelocityXTexture,
+            this.changeInLowFreqVelocityYTexture
+        );
 
         
         /**
@@ -918,12 +978,15 @@ export class NaiveRenderer extends renderer.Renderer {
             },
         });
 
+        // Draw skybox into reflection target
+        reflectionPass.setPipeline(this.skyboxPipeline);
+        reflectionPass.setBindGroup(0, this.reflectionSceneUniformsBindGroup);
+        reflectionPass.setBindGroup(1, this.envBindGroup);
+        reflectionPass.draw(3);
+
+        // Draw glTF scene into reflection target
         reflectionPass.setPipeline(this.pipeline);
-        // Use the reflection camera instead of the main camera
-        reflectionPass.setBindGroup(
-            shaders.constants.bindGroup_scene,
-            this.reflectionSceneUniformsBindGroup
-        );
+        reflectionPass.setBindGroup(shaders.constants.bindGroup_scene, this.reflectionSceneUniformsBindGroup);
         // Tell the material shader "this is the reflection pass"
         // so it can discard fragments below the water plane.
         reflectionPass.setBindGroup(3, this.passFlagsBindGroupReflection);
@@ -960,8 +1023,14 @@ export class NaiveRenderer extends renderer.Renderer {
                 depthStoreOp: "store"
             }
         });
-        renderPass.setPipeline(this.pipeline);
+        // Draw skybox first (no depth write)
+        renderPass.setPipeline(this.skyboxPipeline);
+        renderPass.setBindGroup(0, this.sceneUniformsBindGroup);
+        renderPass.setBindGroup(1, this.envBindGroup);
+        renderPass.draw(3);
 
+        // Draw glTF scene
+        renderPass.setPipeline(this.pipeline);
         renderPass.setBindGroup(shaders.constants.bindGroup_scene, this.sceneUniformsBindGroup);
         // Tell the material shader "this is the main pass"
         renderPass.setBindGroup(3, this.passFlagsBindGroupMain);
@@ -992,12 +1061,10 @@ export class NaiveRenderer extends renderer.Renderer {
 
     // Update world scale (sx, sz), height amplitude, and base level (Y offset).
     // Offsets match the HeightConsts layout described above.
-    setHeightParams(sx: number, sz: number, heightScale: number, baseLevel: number) {
+    setHeightParams(sx: number, sz: number, heightScale: number) {
         renderer.device.queue.writeBuffer(this.heightConsts, 8,  new Float32Array([sx, sz]));
         renderer.device.queue.writeBuffer(this.heightConsts, 16, new Float32Array([heightScale]));
-        renderer.device.queue.writeBuffer(this.heightConsts, 20, new Float32Array([baseLevel]));
-
-        this.waterBaseLevel = baseLevel;
+        renderer.device.queue.writeBuffer(this.heightConsts, 20, new Float32Array([0.0]));
     }
 
     // Prepare per-frame upload helpers based on current (heightW, heightH).
@@ -1073,7 +1140,7 @@ export class NaiveRenderer extends renderer.Renderer {
 
         renderer.device.queue.submit([encoder.finish()]);
 
-        this.simulator.simulate(1.0/60.0);
+        this.simulator.simulate(dt);
     }
 
     private updateReflectionUniforms() {
@@ -1096,7 +1163,14 @@ export class NaiveRenderer extends renderer.Renderer {
 
         // Build view matrix from mirrored position and orientation
         const viewRef = mat4.lookAt(eyeRef, lookRef, upRef);
-        const proj = mainCam.projMat; 
+        // Use a slightly wider FOV for reflection to reduce edge clipping/stretch
+        const fovScale = 3.0;
+        const proj = mat4.perspective(
+            renderer.fovYDegrees * fovScale * Math.PI / 180.0,
+            renderer.aspectRatio,
+            Camera.nearPlane,
+            Camera.farPlane
+        );
         const viewProjRef = mat4.mul(proj, viewRef);
         const invViewRef = mat4.inverse(viewRef);
         const invProj = mat4.inverse(proj);
@@ -1108,7 +1182,7 @@ export class NaiveRenderer extends renderer.Renderer {
         this.reflectionCameraUniforms.invViewMat = invViewRef;
         this.reflectionCameraUniforms.canvasResolution = [renderer.canvas.width, renderer.canvas.height];
         this.reflectionCameraUniforms.nearPlane = Camera.nearPlane;
-        this.reflectionCameraUniforms.farPlane = Camera.farPlane;
+        this.reflectionCameraUniforms.farPlane = Camera.farPlane * 10.0;
 
         // Upload reflection camera UBO for the reflection pass
         renderer.device.queue.writeBuffer(
@@ -1125,6 +1199,221 @@ export class NaiveRenderer extends renderer.Renderer {
             viewProjRef.byteOffset,   
             viewProjRef.byteLength
         );
+    }
+
+    private createPlaceholderEnvTexture(): GPUTexture {
+        const tex = renderer.device.createTexture({
+            label: "env placeholder",
+            size: [1, 1, 1],
+            format: "rgba16float",
+            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+        });
+        const data = new Uint16Array([this.toFloat16(0.1), this.toFloat16(0.2), this.toFloat16(0.3), this.toFloat16(1.0)]);
+        renderer.device.queue.writeTexture(
+            { texture: tex },
+            data,
+            { bytesPerRow: 8 },
+            [1, 1, 1]
+        );
+        return tex;
+    }
+
+    private async initEnvironmentMap(url: string) {
+        try {
+            const hdr = await this.loadHDR(url);
+            const tex = renderer.device.createTexture({
+                label: "env hdr texture",
+                size: [hdr.width, hdr.height, 1],
+                format: "rgba16float",
+                usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+            });
+
+            const data16 = this.toFloat16Array(hdr.data);
+            renderer.device.queue.writeTexture(
+                { texture: tex },
+                data16 as BufferSource,
+                { bytesPerRow: hdr.width * 4 * 2 },
+                [hdr.width, hdr.height, 1]
+            );
+
+            // Swap in the loaded texture.
+            this.envTexture = tex;
+            this.envBindGroup = renderer.device.createBindGroup({
+                label: "env bind group (loaded)",
+                layout: this.envBindGroupLayout,
+                entries: [
+                    { binding: 0, resource: this.envSampler },
+                    { binding: 1, resource: this.envTexture.createView() },
+                ],
+            });
+        } catch (err) {
+            console.warn("Failed to load HDR env map:", err);
+        }
+    }
+
+    private async loadHDR(url: string): Promise<{ width: number; height: number; data: Float32Array }> {
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`Failed to fetch HDR: ${response.statusText}`);
+        }
+        const arrayBuffer = await response.arrayBuffer();
+        return this.parseHDR(arrayBuffer);
+    }
+
+    private toFloat16(v: number): number {
+        // Half float conversion (round-to-nearest-even)
+        const floatView = new Float32Array(1);
+        const intView = new Uint32Array(floatView.buffer);
+        floatView[0] = v;
+        const x = intView[0];
+        const sign = (x >> 16) & 0x8000;
+        const mantissa = x & 0x7fffff;
+        const exp = (x >> 23) & 0xff;
+        if (exp === 0xff) {
+            // NaN or Inf
+            return sign | 0x7c00 | (mantissa ? 1 : 0);
+        }
+        if (exp === 0) {
+            // subnormal in f32
+            if (mantissa === 0) {
+                return sign;
+            }
+            let e = -1;
+            let m = mantissa;
+            while ((m & 0x800000) === 0) {
+                m <<= 1;
+                e--;
+            }
+            m &= 0x7fffff;
+            const exp16 = e + 1 + 127 - 15;
+            if (exp16 <= 0) {
+                return sign;
+            }
+            return sign | (exp16 << 10) | (m >> 13);
+        }
+        const exp16 = exp - 127 + 15;
+        if (exp16 >= 0x1f) {
+            return sign | 0x7c00;
+        }
+        return sign | (exp16 << 10) | (mantissa >> 13);
+    }
+
+    private toFloat16Array(src: Float32Array): Uint16Array {
+        const out = new Uint16Array(src.length);
+        for (let i = 0; i < src.length; i++) {
+            out[i] = this.toFloat16(src[i]);
+        }
+        return out;
+    }
+
+    // Minimal Radiance .hdr (RGBE) loader, adapted from three.js utilities.
+    private parseHDR(buffer: ArrayBuffer): { width: number; height: number; data: Float32Array } {
+        const uint8 = new Uint8Array(buffer);
+        let pos = 0;
+        const NEWLINE = 10;
+        const decoder = new TextDecoder();
+
+        const readLine = () => {
+            let start = pos;
+            while (pos < uint8.length && uint8[pos] !== NEWLINE) pos++;
+            const line = decoder.decode(uint8.subarray(start, pos));
+            pos++; // skip newline
+            return line;
+        };
+
+        let width = 0;
+        let height = 0;
+        // Header
+        while (pos < uint8.length) {
+            const line = readLine().trim();
+            if (line.length === 0) {
+                // empty line; resolution typically follows
+                break;
+            }
+        }
+        // Read until we find resolution line "-Y H +X W"
+        while (pos < uint8.length && (width === 0 || height === 0)) {
+            const line = readLine().trim();
+            if (line.length === 0) {
+                continue;
+            }
+            if (line.startsWith("-Y") || line.startsWith("+Y")) {
+                const parts = line.split(/\s+/);
+                // e.g. "-Y 1024 +X 2048"
+                const hIndex = parts.findIndex(p => p === "-Y" || p === "+Y");
+                const wIndex = parts.findIndex(p => p === "+X" || p === "-X");
+                if (hIndex >= 0 && hIndex + 1 < parts.length) {
+                    height = parseInt(parts[hIndex + 1], 10);
+                }
+                if (wIndex >= 0 && wIndex + 1 < parts.length) {
+                    width = parseInt(parts[wIndex + 1], 10);
+                }
+            }
+        }
+
+        if (width === 0 || height === 0) {
+            throw new Error("Invalid HDR header (width/height missing)");
+        }
+
+        const out = new Float32Array(width * height * 4);
+        const scanline = new Uint8Array(width * 4);
+
+        for (let y = 0; y < height; y++) {
+            // Expecting RLE header per scanline
+            if (uint8[pos++] !== 2 || uint8[pos++] !== 2) {
+                throw new Error("Unsupported HDR scanline format");
+            }
+            const scanWidth = (uint8[pos++] << 8) | uint8[pos++];
+            if (scanWidth !== width) {
+                throw new Error("HDR scanline width mismatch");
+            }
+            // Read RLE for each of 4 components
+            for (let c = 0; c < 4; c++) {
+                let i = 0;
+                while (i < width) {
+                    const count = uint8[pos++];
+                    const value = uint8[pos++];
+                    if (count > 128) {
+                        const reps = count - 128;
+                        for (let r = 0; r < reps; r++) {
+                            scanline[i * 4 + c] = value;
+                            i++;
+                        }
+                    } else {
+                        let reps = count;
+                        scanline[i * 4 + c] = value;
+                        i++;
+                        reps--;
+                        for (let r = 0; r < reps; r++) {
+                            scanline[i * 4 + c] = uint8[pos++];
+                            i++;
+                        }
+                    }
+                }
+            }
+            // Convert RGBE to float
+            for (let x = 0; x < width; x++) {
+                const r = scanline[x * 4 + 0];
+                const g = scanline[x * 4 + 1];
+                const b = scanline[x * 4 + 2];
+                const e = scanline[x * 4 + 3];
+                const outIndex = (y * width + x) * 4;
+                if (e > 0) {
+                    const scale = Math.pow(2.0, e - 128.0) / 255.0;
+                    out[outIndex + 0] = r * scale;
+                    out[outIndex + 1] = g * scale;
+                    out[outIndex + 2] = b * scale;
+                    out[outIndex + 3] = 1.0;
+                } else {
+                    out[outIndex + 0] = 0;
+                    out[outIndex + 1] = 0;
+                    out[outIndex + 2] = 0;
+                    out[outIndex + 3] = 1.0;
+                }
+            }
+        }
+
+        return { width, height, data: out };
     }
 }
 

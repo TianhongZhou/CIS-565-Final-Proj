@@ -40,7 +40,7 @@ fn vs_main(v: VSIn) -> VSOut {
 
   let world = vec3<f32>(
     (v.uv.x * 2.0 - 1.0) * hC.worldScaleXY.x,
-    hC.baseLevel + h,
+    h,
     (v.uv.y * 2.0 - 1.0) * hC.worldScaleXY.y
   );
   var clipPos = camera.viewProjMat * vec4<f32>(world, 1.0);

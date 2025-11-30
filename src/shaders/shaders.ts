@@ -15,6 +15,8 @@ import transportComputeRaw from './transport.cs.wgsl?raw';
 import velocityComputeRaw from './velocity.cs.wgsl?raw';
 import flowRecombineComputeRaw from './flowRecombine.cs.wgsl?raw';
 import heightRecombineComputeRaw from './heightRecombine.cs.wgsl?raw';
+import skyboxVertRaw from './skybox.vs.wgsl?raw';
+import skyboxFragRaw from './skybox.fs.wgsl?raw';
 
 import computeInitialVelocityX from './shallowWaterShaders/computeInitialVelocityX.cs.wgsl?raw';
 import computeInitialVelocityY from './shallowWaterShaders/computeInitialVelocityY.cs.wgsl?raw';
@@ -36,7 +38,7 @@ export const constants = {
     bindGroup_material: 2,
     threadsInDiffusionBlockX: 16,
     threadsInDiffusionBlockY: 16,
-    water_base_level: 0
+    water_base_level: 10
 };
 
 // =================================
@@ -58,6 +60,8 @@ export const naiveFragSrc: string = processShaderRaw(naiveFragRaw);
 
 export const waterVertSrc: string = processShaderRaw(waterVertRaw);
 export const waterFragSrc: string = processShaderRaw(waterFragRaw);
+export const skyboxVertSrc: string = processShaderRaw(skyboxVertRaw);
+export const skyboxFragSrc: string = processShaderRaw(skyboxFragRaw);
 
 export const diffuseComputeSrc: string = processShaderRaw(diffuseComputeRaw);
 export const reconstructHeightSrc: string = processShaderRaw(reconstructHeightRaw);

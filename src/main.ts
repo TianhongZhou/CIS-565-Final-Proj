@@ -45,8 +45,7 @@ renderer = new NaiveRenderer(stage);
 // Set water-surface parameters:
 // worldScaleXY -> the grid spans [-a,+b] in X and Z (width/depth = 2 units)
 // heightScale  -> amplitude multiplier for heights sampled from the texture
-// baseLevel    -> lifts the whole plane in world Y (0 = centered at origin)
-renderer.setHeightParams(5, 5, 1, constants.water_base_level);
+renderer.setHeightParams(10, 10, 1);
 
 // Initialize GPU height texture and bind groups with the first frame’s data.
 //renderer.updateHeight(arr, W, H);

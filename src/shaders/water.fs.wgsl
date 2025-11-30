@@ -60,22 +60,27 @@ fn fs_main(in: FSIn) -> @location(0) vec4<f32> {
   // --- Planar Reflection ---
   let refClip = reflection.viewProj * vec4<f32>(in.worldPos, 1.0);
   let refNdc  = refClip.xy / refClip.w;
-  var refUv   = refNdc * 0.5 + vec2<f32>(0.5, 0.5);
+  let refUvRaw = refNdc * 0.5 + vec2<f32>(0.5, 0.5);
+  var refUv    = refUvRaw;
   refUv.y = 1.0 - refUv.y;
 
   // Normal distortion
   let waveStrength = 0.02;
   refUv += N.xz * waveStrength;
-  refUv = clamp(refUv, vec2<f32>(0.0), vec2<f32>(1.0));
+  // Sample an inner region of the reflection texture (less stretch)
+  let uvScale = 0.9;
+  let refUvScaled = refUv * uvScale + vec2<f32>((1.0 - uvScale) * 0.5);
+  let refColor = textureSample(reflectionTex, reflectionSampler, clamp(refUvScaled, vec2<f32>(0.0), vec2<f32>(1.0))).rgb;
 
-  let refColor = textureSample(reflectionTex, reflectionSampler, refUv).rgb;
-  
-  // Final color
-  let color = 0.5 * waterLit + 0.5 * refColor;
+  // Constant reflection weight to keep reflections everywhere
+  let reflWeight = 0.5;
+
+  // Blend reflection with base lighting (no env fallback)
+  let color = mix(waterLit, refColor, reflWeight);
 
   // Keep water semi-transparent (for blending)
   let alpha = 0.8;
   
-  return vec4<f32>((N + 1.0) / 2.0, 1.0);
-  // return vec4<f32>(color, alpha);
+  // return vec4<f32>((N + 1.0) / 2.0, 1.0);
+  return vec4<f32>(color, alpha);
 }
