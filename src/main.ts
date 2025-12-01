@@ -30,7 +30,7 @@ var renderer: NaiveRenderer | undefined;
 let clickListener: ((ev: PointerEvent) => void) | null = null;
 
 renderer?.stop();
-renderer = new NaiveRenderer(stage);
+renderer = new NaiveRenderer(stage, 'default');
 
 // // DiffuseRender
 // var renderer: DiffuseRenderer | undefined;
@@ -67,7 +67,7 @@ async function switchScene(sceneName: SceneName) {
 
     // Reset simulation state by recreating renderer (fresh resources)
     renderer?.stop();
-    renderer = new NaiveRenderer(stage);
+    renderer = new NaiveRenderer(stage, sceneName);
     renderer.setHeightParams(scalex, scalez, 1);
 
     switch (sceneName) {

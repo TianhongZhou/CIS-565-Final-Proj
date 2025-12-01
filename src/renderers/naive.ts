@@ -165,8 +165,11 @@ export class NaiveRenderer extends renderer.Renderer {
     private heightAddCS: AddOnCS;
     private bumpTexture: GPUTexture;
 
-    constructor(stage: Stage) {
+    private initMode: 'default' | 'terrain' | 'ship' | 'click';
+
+    constructor(stage: Stage, initMode: 'default' | 'terrain' | 'ship' | 'click' = 'default') {
         super(stage);
+        this.initMode = initMode;
 
         this.sceneUniformsBindGroupLayout = renderer.device.createBindGroupLayout({
             label: "scene uniforms bind group layout",
@@ -739,33 +742,7 @@ export class NaiveRenderer extends renderer.Renderer {
         const highAmp = 0.5;     
         const freq = 16.0;     
 
-        for (let y = 0; y < Htex; y++) {
-            for (let x = 0; x < Wtex; x++) {
-                const idx = y * Wtex + x;
-
-                const dx   = x - centerX;
-                const dy   = y - centerY;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                const bump = bumpHeight * Math.exp(-(dist * dist) / (bumpRadius * bumpRadius));
-
-                const baseWater = shaders.constants.water_base_level + bump; 
-
-                const u = x / Wtex;
-                const v = y / Htex;
-                const wave =
-                    highAmp *
-                    Math.sin(freq * Math.PI * u) *
-                    Math.sin(freq * Math.PI * v);
-
-                terrainArr[idx] = 0.0;
-
-                this.lowArr[idx]  = baseWater;
-
-                highArr[idx] = wave;
-
-                this.heightArr[idx] = baseWater + 0.0;
-            }
-        }
+        this.seedHeightFields(this.initMode, terrainArr, highArr, Wtex, Htex);
 
         this.updateTexture(terrainArr, this.terrainTexture);
         this.updateTexture(terrainZeroArr,  this.terrainZeroTexture);
@@ -970,6 +947,70 @@ export class NaiveRenderer extends renderer.Renderer {
             this.flowRecombineY,
             this.heightRecombine
         );
+    }
+
+    private seedHeightFields(
+        mode: 'default' | 'terrain' | 'ship' | 'click',
+        terrainArr: Float32Array,
+        highArr: Float32Array,
+        Wtex: number,
+        Htex: number
+    ) {
+        const centerX = Wtex / 2;
+        const centerY = Htex / 2;
+        const bumpRadius = Math.min(Wtex, Htex) * 0.1;
+        const bumpHeight = 3.5;
+        const highAmp = 0.5;
+        const freq = 16.0;
+
+        for (let y = 0; y < Htex; y++) {
+            for (let x = 0; x < Wtex; x++) {
+                const idx = y * Wtex + x;
+                terrainArr[idx] = 0.0;
+
+                const u = x / Wtex;
+                const v = y / Htex;
+
+                let baseWater = shaders.constants.water_base_level;
+                let high = 0.0;
+
+                switch (mode) {
+                    case 'terrain': {
+                        baseWater += 0.0;
+                        high = 0.0;
+                        break;
+                    }
+                    case 'ship': {
+                        baseWater += 0.0;
+                        high = 0.0;
+                        break;
+                    }
+                    case 'click': {
+                        // flat water for click interactions
+                        baseWater += 0.0;
+                        high = 0.0;
+                        break;
+                    }
+                    default: {
+                        // original bump + high-frequency ripple
+                        const dx = x - centerX;
+                        const dy = y - centerY;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        const bump = bumpHeight * Math.exp(-(dist * dist) / (bumpRadius * bumpRadius));
+                        baseWater += bump;
+                        high =
+                            highAmp *
+                            Math.sin(freq * Math.PI * u) *
+                            Math.sin(freq * Math.PI * v);
+                        break;
+                    }
+                }
+
+                this.lowArr[idx] = baseWater;
+                highArr[idx] = high;
+                this.heightArr[idx] = baseWater;
+            }
+        }
     }
 
     override draw() {

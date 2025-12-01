@@ -72,11 +72,21 @@ fn fs_main(in: FSIn) -> @location(0) vec4<f32> {
   let refUvScaled = refUv * uvScale + vec2<f32>((1.0 - uvScale) * 0.5);
   let refColor = textureSample(reflectionTex, reflectionSampler, clamp(refUvScaled, vec2<f32>(0.0), vec2<f32>(1.0))).rgb;
 
-  // Constant reflection weight to keep reflections everywhere
-  let reflWeight = 0.5;
+  // Fresnel (Schlick)
+  let f0 = vec3<f32>(0.2, 0.2, 0.2);
+  let cosTheta = max(dot(N, V), 0.0);
+  let fresnel = f0 + (vec3<f32>(1.0) - f0) * pow(1.0 - cosTheta, 5.0);
 
-  // Blend reflection with base lighting (no env fallback)
-  let color = mix(waterLit, refColor, reflWeight);
+  // Depth attenuation (approximate using view-space depth)
+  let viewPos = camera.viewMat * vec4<f32>(in.worldPos, 1.0);
+  let linearDepth = -viewPos.z;
+  let depth01 = clamp((linearDepth - camera.nearPlane) / (camera.farPlane - camera.nearPlane), 0.0, 1.0);
+  let attenuation = exp(-depth01 * 4.0); // tweak factor for water absorption
+
+  // Combine lighting and reflection with fresnel and attenuation
+  let reflectionMixed = mix(waterLit, refColor, fresnel);
+  let deepColor = vec3<f32>(0.02, 0.05, 0.08);
+  let color = mix(deepColor, reflectionMixed, attenuation);
 
   // Keep water semi-transparent (for blending)
   let alpha = 0.8;
