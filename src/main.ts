@@ -28,6 +28,8 @@ const stage = new Stage(scene, camera, stats);
 // NaiveRenderer
 var renderer: NaiveRenderer | undefined;
 let clickListener: ((ev: PointerEvent) => void) | null = null;
+let shipKeyDownListener: ((e: KeyboardEvent) => void) | null = null;
+let shipKeyUpListener: ((e: KeyboardEvent) => void) | null = null;
 
 renderer?.stop();
 renderer = new NaiveRenderer(stage, 'default');
@@ -101,9 +103,22 @@ async function loadTerrainScene() {
 }
 
 async function loadShipScene() {
-    // TODO: load ship model and add keyboard control callbacks.
-    // e.g., scene.loadGltf('scenes/ship/ship.gltf') then register key handlers to move it and feed velocities into the simulator.
-    console.info('Ship scene stub - implement ship controls and water interaction');
+    console.info('Ship scene active - use arrow keys to move imagined ball');
+
+    if (!renderer) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+        renderer?.handleShipKey(e.key, true);
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+        renderer?.handleShipKey(e.key, false);
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+
+    shipKeyDownListener = onKeyDown;
+    shipKeyUpListener = onKeyUp;
 }
 
 async function loadClickScene() {
@@ -123,5 +138,13 @@ function cleanupSceneHooks() {
     if (clickListener) {
         canvas.removeEventListener('pointerdown', clickListener);
         clickListener = null;
+    }
+    if (shipKeyDownListener) {
+        window.removeEventListener('keydown', shipKeyDownListener);
+        shipKeyDownListener = null;
+    }
+    if (shipKeyUpListener) {
+        window.removeEventListener('keyup', shipKeyUpListener);
+        shipKeyUpListener = null;
     }
 }

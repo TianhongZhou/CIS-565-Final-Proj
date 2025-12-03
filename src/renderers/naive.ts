@@ -167,6 +167,23 @@ export class NaiveRenderer extends renderer.Renderer {
 
     private initMode: 'default' | 'terrain' | 'ship' | 'click';
 
+    // --- Ship imagined ball state ---
+    private shipPos: Vec3 = vec3.fromValues(0, shaders.constants.water_base_level, 0);
+    private shipRadius: number = 0.5; 
+    private shipSpeed: number = 3.0;
+    private shipForward: Vec3 = vec3.fromValues(0, 0, 1);
+
+    private shipKeys: Record<string, boolean> = {
+        ArrowUp: false,
+        ArrowDown: false,
+        ArrowLeft: false,
+        ArrowRight: false,
+    };
+
+    private shipBumpArr: Float32Array | null = null;
+    private shipBumpArrPrev: Float32Array | null = null;
+    private shipBumpArrDelta: Float32Array | null = null;
+
     constructor(stage: Stage, initMode: 'default' | 'terrain' | 'ship' | 'click' = 'default') {
         super(stage);
         this.initMode = initMode;
@@ -1203,6 +1220,10 @@ export class NaiveRenderer extends renderer.Renderer {
 
         renderer.device.queue.submit([encoder.finish()]);
 
+        if (this.initMode === 'ship') {
+            this.updateShipInteraction(dt);
+        }
+
         this.simulator.simulate(dt);
     }
 
@@ -1575,6 +1596,162 @@ export class NaiveRenderer extends renderer.Renderer {
         }
 
         return { width, height, data: out };
+    }
+
+    public handleShipKey(key: string, pressed: boolean) {
+        if (this.initMode !== 'ship') return;
+        if (key in this.shipKeys) {
+            this.shipKeys[key] = pressed;
+        }
+    }
+
+    // --- Ship interaction: imagined ball pressing into height field ---
+    private updateShipInteraction(dt: number) {
+        if (this.initMode !== 'ship') return;
+
+        const camFront = this.camera.cameraFront;
+        const forwardCam: Vec3 = vec3.fromValues(camFront[0], 0, camFront[2]);
+
+        if (vec3.length(forwardCam) < 1e-4) {
+            return;
+        }
+        vec3.normalize(forwardCam, forwardCam);
+
+        const rightCam: Vec3 = vec3.fromValues(forwardCam[2], 0, -forwardCam[0]);
+
+        let moveX = 0;
+        let moveZ = 0;
+
+        if (this.shipKeys['ArrowUp']) {
+            moveX += forwardCam[0];
+            moveZ += forwardCam[2];
+        }
+        if (this.shipKeys['ArrowDown']) {
+            moveX -= forwardCam[0];
+            moveZ -= forwardCam[2];
+        }
+        if (this.shipKeys['ArrowLeft']) {
+            moveX += rightCam[0];
+            moveZ += rightCam[2];
+        }
+        if (this.shipKeys['ArrowRight']) {
+            moveX -= rightCam[0];
+            moveZ -= rightCam[2];
+        }
+
+        const move: Vec3 = vec3.fromValues(moveX, 0, moveZ);
+        const len = vec3.length(move);
+
+        if (len > 1e-4) {
+            vec3.scale(move, this.shipSpeed * dt / len, move);
+            this.shipPos[0] += move[0];
+            this.shipPos[2] += move[2];
+
+            const moveDir: Vec3 = vec3.fromValues(move[0], 0, move[2]);
+            vec3.normalize(moveDir, moveDir);
+
+            vec3.lerp(this.shipForward, moveDir, 0.2, this.shipForward);
+            vec3.normalize(this.shipForward, this.shipForward);
+
+            this.applyShipBump(dt);
+        }
+
+        this.shipPos[0] = Math.min(this.waterScaleX,  Math.max(-this.waterScaleX,  this.shipPos[0]));
+        this.shipPos[2] = Math.min(this.waterScaleZ,  Math.max(-this.waterScaleZ,  this.shipPos[2]));
+
+        this.shipPos[1] = shaders.constants.water_base_level;
+    }
+
+    private applyShipBump(dt: number) {
+        if (this.initMode !== 'ship') return;
+
+        const W = this.heightW;
+        const H = this.heightH;
+        const N = W * H;
+
+        if (!this.shipBumpArr) {
+            this.shipBumpArr      = new Float32Array(N);
+            this.shipBumpArrPrev  = new Float32Array(N);
+            this.shipBumpArrDelta = new Float32Array(N);
+        }
+
+        const cur   = this.shipBumpArr!;
+        const prev  = this.shipBumpArrPrev!;
+        const delta = this.shipBumpArrDelta!;
+
+        prev.set(cur);
+        cur.fill(0);
+
+        const sx = this.waterScaleX;
+        const sz = this.waterScaleZ;
+
+        const cx = this.shipPos[0];
+        const cz = this.shipPos[2];
+
+        let forward = this.shipForward;
+
+        const forwardXZ: Vec3 = vec3.fromValues(forward[0], 0, forward[2]);
+        if (vec3.length(forwardXZ) < 1e-4) {
+            return;
+        }
+        vec3.normalize(forwardXZ, forwardXZ);
+
+        const right: Vec3 = vec3.fromValues(forwardXZ[2], 0, -forwardXZ[0]);
+
+        const L = this.shipRadius * 3.0;  
+        const baseHalfWidth = this.shipRadius * 1.0; 
+
+        const strength = 100.0; 
+
+        for (let j = 0; j < H; j++) {
+            const v = j / (H - 1);
+            const worldZ = (v - 0.5) * 2 * sz;
+
+            for (let i = 0; i < W; i++) {
+                const u = i / (W - 1);
+                const worldX = (u - 0.5) * 2 * sx;
+
+                const dx = worldX - cx;
+                const dz = worldZ - cz;
+
+                const s = dx * forwardXZ[0] + dz * forwardXZ[2];
+                const t = dx * right[0]     + dz * right[2];
+
+                if (s < 0 || s > L) continue;
+
+                const halfWidthAtS = baseHalfWidth * (1.0 - s / L);
+                if (halfWidthAtS <= 0.0) continue;
+                if (Math.abs(t) > halfWidthAtS) continue;
+
+                const wAlong = 1.0 - s / L;              
+                const wSide  = 1.0 - Math.abs(t) / halfWidthAtS;
+                const w = wAlong * wSide;
+
+                if (w <= 0.0) continue;
+
+                const d = -strength * w * 1.1;
+
+                const idx = j * W + i;
+                cur[idx] += d;
+            }
+        }
+
+        let sum = 0;
+        for (let i = 0; i < N; i++) {
+            delta[i] = cur[i] - prev[i];
+            sum += delta[i];
+        }
+
+        const mean = sum / N;
+        for (let i = 0; i < N; i++) {
+            delta[i] = (delta[i] - mean) * dt;
+        }
+
+        this.updateTexture(delta, this.bumpTexture);
+
+        this.heightAddCS.run(this.heightTexture,     this.bumpTexture, W, H);
+        this.heightAddCS.run(this.lowFreqTexture,    this.bumpTexture, W, H);
+        this.heightAddCS.run(this.heightPrevTexture, this.bumpTexture, W, H);
     }
 }
 
