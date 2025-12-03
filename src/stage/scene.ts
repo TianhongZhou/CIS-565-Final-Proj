@@ -218,7 +218,7 @@ function createTexture(imageBitmap: ImageBitmap): GPUTexture {
     return texture;
 }
 
-function convertWrapModeEnum(wrapMode: number): GPUAddressMode {
+function convertWrapModeEnum(wrapMode?: number): GPUAddressMode {
     switch (wrapMode) {
         case 0x2901: // REPEAT
             return 'repeat';
@@ -227,7 +227,8 @@ function convertWrapModeEnum(wrapMode: number): GPUAddressMode {
         case 0x8370: // MIRRORED_REPEAT
             return 'mirror-repeat';
         default:
-            throw new Error(`unsupported wrap mode: 0x${wrapMode.toString(16)}`);
+            // Fallback to clamp if missing/unknown
+            return 'clamp-to-edge';
     }
 }
 
@@ -239,10 +240,12 @@ function createSampler(gltfSampler: GLTFSampler): GPUSampler {
             samplerDescriptor.magFilter = 'nearest';
             break;
         case 0x2601: // LINEAR
+        case undefined:
             samplerDescriptor.magFilter = 'linear';
             break;
         default:
-            throw new Error(`unsupported magFilter: 0x${gltfSampler.magFilter!.toString(16)}`);
+            samplerDescriptor.magFilter = 'linear';
+            break;
     }
 
     switch (gltfSampler.minFilter) {
@@ -250,6 +253,7 @@ function createSampler(gltfSampler: GLTFSampler): GPUSampler {
             samplerDescriptor.minFilter = 'nearest';
             break;
         case 0x2601: // LINEAR
+        case undefined:
             samplerDescriptor.minFilter = 'linear';
             break;
         case 0x2700: // NEAREST_MIPMAP_NEAREST
@@ -269,11 +273,12 @@ function createSampler(gltfSampler: GLTFSampler): GPUSampler {
             samplerDescriptor.mipmapFilter = 'linear';
             break;
         default:
-            throw new Error(`unsupported minFilter: 0x${gltfSampler.minFilter!.toString(16)}`);
+            samplerDescriptor.minFilter = 'linear';
+            break;
     }
 
-    samplerDescriptor.addressModeU = convertWrapModeEnum(gltfSampler.wrapS!);
-    samplerDescriptor.addressModeV = convertWrapModeEnum(gltfSampler.wrapT!);
+    samplerDescriptor.addressModeU = convertWrapModeEnum(gltfSampler.wrapS);
+    samplerDescriptor.addressModeV = convertWrapModeEnum(gltfSampler.wrapT);
 
     return device.createSampler(samplerDescriptor);
 }

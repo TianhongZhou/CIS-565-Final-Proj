@@ -14,6 +14,7 @@ setupLoaders();
 
 let scene = new Scene();
 // await scene.loadGltf('./scenes/sponza/Sponza.gltf');
+let defaultSceneLoaded = false;
 
 const camera = new Camera();
 
@@ -25,11 +26,11 @@ const gui = new GUI();
 
 const stage = new Stage(scene, camera, stats);
 
+await loadDefaultScene();
+
 // NaiveRenderer
 var renderer: NaiveRenderer | undefined;
 let clickListener: ((ev: PointerEvent) => void) | null = null;
-let shipKeyDownListener: ((e: KeyboardEvent) => void) | null = null;
-let shipKeyUpListener: ((e: KeyboardEvent) => void) | null = null;
 
 renderer?.stop();
 renderer = new NaiveRenderer(stage, 'default');
@@ -43,8 +44,8 @@ renderer = new NaiveRenderer(stage, 'default');
 // Set water-surface parameters:
 // worldScaleXY -> the grid spans [-a,+b] in X and Z (width/depth = 2 units)
 // heightScale  -> amplitude multiplier for heights sampled from the texture
-const scalex = 5;
-const scalez = 5;
+const scalex = 10;
+const scalez = 10;
 renderer.setHeightParams(scalex, scalez, 1);
 
 // Initialize GPU height texture and bind groups with the first frame’s data.
@@ -91,7 +92,10 @@ async function switchScene(sceneName: SceneName) {
 // Below are stubs/placeholders for different scene setups.
 // Fill these to load assets, attach controls, and wire interactions.
 async function loadDefaultScene() {
-    // TODO: implement default scene loading/reset if needed.
+    if (!defaultSceneLoaded) {
+        await scene.loadGltf('./scenes/ship/ship_pinnace_1k.gltf');
+        defaultSceneLoaded = true;
+    }
     console.info('Default scene active');
 }
 
@@ -106,19 +110,6 @@ async function loadShipScene() {
     console.info('Ship scene active - use arrow keys to move imagined ball');
 
     if (!renderer) return;
-
-    const onKeyDown = (e: KeyboardEvent) => {
-        renderer?.handleShipKey(e.key, true);
-    };
-    const onKeyUp = (e: KeyboardEvent) => {
-        renderer?.handleShipKey(e.key, false);
-    };
-
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
-
-    shipKeyDownListener = onKeyDown;
-    shipKeyUpListener = onKeyUp;
 }
 
 async function loadClickScene() {
@@ -138,13 +129,5 @@ function cleanupSceneHooks() {
     if (clickListener) {
         canvas.removeEventListener('pointerdown', clickListener);
         clickListener = null;
-    }
-    if (shipKeyDownListener) {
-        window.removeEventListener('keydown', shipKeyDownListener);
-        shipKeyDownListener = null;
-    }
-    if (shipKeyUpListener) {
-        window.removeEventListener('keyup', shipKeyUpListener);
-        shipKeyUpListener = null;
     }
 }

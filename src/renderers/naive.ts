@@ -25,8 +25,8 @@ export class NaiveRenderer extends renderer.Renderer {
 
     // --- Heightmap state (CPU & GPU resources) ---
     // current heightmap width & height (texels)
-    private heightW = 256; 
-    private heightH = 256;
+    private heightW = 512; 
+    private heightH = 512;
 
     // R32Float texture storing heights (1 float per texel)
     heightTexture: GPUTexture;
@@ -169,9 +169,10 @@ export class NaiveRenderer extends renderer.Renderer {
 
     // --- Ship imagined ball state ---
     private shipPos: Vec3 = vec3.fromValues(0, shaders.constants.water_base_level, 0);
-    private shipRadius: number = 0.5; 
-    private shipSpeed: number = 3.0;
+    private shipRadius: number = 0.1; 
+    private shipSpeed: number = 1.0;
     private shipForward: Vec3 = vec3.fromValues(0, 0, 1);
+    private shipModelScale: number = 0.02;
 
     private shipKeys: Record<string, boolean> = {
         ArrowUp: false,
@@ -179,6 +180,8 @@ export class NaiveRenderer extends renderer.Renderer {
         ArrowLeft: false,
         ArrowRight: false,
     };
+    private shipKeyDownHandler?: (e: KeyboardEvent) => void;
+    private shipKeyUpHandler?: (e: KeyboardEvent) => void;
 
     private shipBumpArr: Float32Array | null = null;
     private shipBumpArrPrev: Float32Array | null = null;
@@ -187,6 +190,12 @@ export class NaiveRenderer extends renderer.Renderer {
     constructor(stage: Stage, initMode: 'default' | 'terrain' | 'ship' | 'click' = 'default') {
         super(stage);
         this.initMode = initMode;
+        if (initMode === 'ship' || initMode === 'default') {
+            this.shipKeyDownHandler = (e: KeyboardEvent) => this.handleShipKey(e.key, true);
+            this.shipKeyUpHandler = (e: KeyboardEvent) => this.handleShipKey(e.key, false);
+            window.addEventListener('keydown', this.shipKeyDownHandler);
+            window.addEventListener('keyup', this.shipKeyUpHandler);
+        }
 
         this.sceneUniformsBindGroupLayout = renderer.device.createBindGroupLayout({
             label: "scene uniforms bind group layout",
@@ -1009,16 +1018,9 @@ export class NaiveRenderer extends renderer.Renderer {
                         break;
                     }
                     default: {
-                        // original bump + high-frequency ripple
-                        const dx = x - centerX;
-                        const dy = y - centerY;
-                        const dist = Math.sqrt(dx * dx + dy * dy);
-                        const bump = bumpHeight * Math.exp(-(dist * dist) / (bumpRadius * bumpRadius));
-                        baseWater += bump;
-                        high =
-                            highAmp *
-                            Math.sin(freq * Math.PI * u) *
-                            Math.sin(freq * Math.PI * v);
+                        // flat like ship
+                        baseWater += 0.0;
+                        high = 0.0;
                         break;
                     }
                 }
@@ -1137,6 +1139,18 @@ export class NaiveRenderer extends renderer.Renderer {
         renderer.device.queue.submit([encoder.finish()]);
     }
 
+    override stop(): void {
+        if (this.shipKeyDownHandler) {
+            window.removeEventListener('keydown', this.shipKeyDownHandler);
+            this.shipKeyDownHandler = undefined;
+        }
+        if (this.shipKeyUpHandler) {
+            window.removeEventListener('keyup', this.shipKeyUpHandler);
+            this.shipKeyUpHandler = undefined;
+        }
+        super.stop();
+    }
+
     // Update world scale (sx, sz), height amplitude, and base level (Y offset).
     // Offsets match the HeightConsts layout described above.
     setHeightParams(sx: number, sz: number, heightScale: number) {
@@ -1220,7 +1234,7 @@ export class NaiveRenderer extends renderer.Renderer {
 
         renderer.device.queue.submit([encoder.finish()]);
 
-        if (this.initMode === 'ship') {
+        if (this.initMode === 'ship' || this.initMode === 'default') {
             this.updateShipInteraction(dt);
         }
 
@@ -1599,7 +1613,7 @@ export class NaiveRenderer extends renderer.Renderer {
     }
 
     public handleShipKey(key: string, pressed: boolean) {
-        if (this.initMode !== 'ship') return;
+        if (this.initMode !== 'ship' && this.initMode !== 'default') return;
         if (key in this.shipKeys) {
             this.shipKeys[key] = pressed;
         }
@@ -1607,7 +1621,7 @@ export class NaiveRenderer extends renderer.Renderer {
 
     // --- Ship interaction: imagined ball pressing into height field ---
     private updateShipInteraction(dt: number) {
-        if (this.initMode !== 'ship') return;
+        if (this.initMode !== 'ship' && this.initMode !== 'default') return;
 
         const camFront = this.camera.cameraFront;
         const forwardCam: Vec3 = vec3.fromValues(camFront[0], 0, camFront[2]);
@@ -1655,15 +1669,39 @@ export class NaiveRenderer extends renderer.Renderer {
 
             this.applyShipBump(dt);
         }
-
+        
         this.shipPos[0] = Math.min(this.waterScaleX,  Math.max(-this.waterScaleX,  this.shipPos[0]));
         this.shipPos[2] = Math.min(this.waterScaleZ,  Math.max(-this.waterScaleZ,  this.shipPos[2]));
 
         this.shipPos[1] = shaders.constants.water_base_level;
+
+        // Update model transform to follow imagined ship position/orientation
+        const angle = Math.atan2(this.shipForward[0], this.shipForward[2]);
+        const rot   = mat4.rotationY(angle);
+        const scl   = mat4.scaling([this.shipModelScale, this.shipModelScale, this.shipModelScale]);
+        const trans = mat4.translation([this.shipPos[0], this.shipPos[1], this.shipPos[2]]);
+
+        const modelMat = new Float32Array(16);     
+        mat4.mul(trans, mat4.mul(rot, scl), modelMat);          
+
+        // Apply to all mesh nodes (simple assumption: single ship model loaded)
+        this.scene.iterate(
+            (node) => {
+                if (node.mesh && node.modelMatUniformBuffer) {
+                    renderer.device.queue.writeBuffer(
+                        node.modelMatUniformBuffer,
+                        0,
+                        modelMat                          
+                    );
+                }
+            },
+            () => {},
+            () => {},
+        );
     }
 
     private applyShipBump(dt: number) {
-        if (this.initMode !== 'ship') return;
+        if (this.initMode !== 'ship' && this.initMode !== 'default') return;
 
         const W = this.heightW;
         const H = this.heightH;
@@ -1701,7 +1739,7 @@ export class NaiveRenderer extends renderer.Renderer {
         const L = this.shipRadius * 3.0;  
         const baseHalfWidth = this.shipRadius * 1.0; 
 
-        const strength = 100.0; 
+        const strength = 20.0; 
 
         for (let j = 0; j < H; j++) {
             const v = j / (H - 1);
