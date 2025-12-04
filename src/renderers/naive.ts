@@ -866,8 +866,7 @@ export class NaiveRenderer extends renderer.Renderer {
             this.lowFreqVelocityXTexture,
             this.lowFreqVelocityYTexture,
             this.changeInLowFreqVelocityXTexture,
-            this.changeInLowFreqVelocityYTexture,
-            this.terrainTexture
+            this.changeInLowFreqVelocityYTexture
         );
 
         

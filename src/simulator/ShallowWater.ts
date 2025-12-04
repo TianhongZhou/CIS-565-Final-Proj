@@ -16,13 +16,11 @@ export class ShallowWater {
     private velocityYMap: GPUTexture;
     private changeInVelocityXMap: GPUTexture;
     private changeInVelocityYMap: GPUTexture;
-    private terrainTex: GPUTexture;
 
 
     private ioBindGroupLayout!: GPUBindGroupLayout;
     private ioCombinedBindGroupLayout!: GPUBindGroupLayout;
     private constsBindGroupLayout!: GPUBindGroupLayout;
-    private terrainBindGroupLayout!: GPUBindGroupLayout;
 
     private heightBindGroup!: GPUBindGroup;
     private previousHeightBindGroup!: GPUBindGroup;
@@ -33,7 +31,6 @@ export class ShallowWater {
     private changeInVelocityXBindGroup!: GPUBindGroup;
     private changeInVelocityYBindGroup!: GPUBindGroup;
     private constsBindGroup!: GPUBindGroup;
-    private terrainBindGroup!: GPUBindGroup;
 
     //Redone bind groups
     private shallowHeightBindGroup!: GPUBindGroup;
@@ -74,7 +71,6 @@ export class ShallowWater {
         velocityYTex: GPUTexture,     
         changeInVelocityXTex: GPUTexture,      
         changeInVelocityYTex: GPUTexture,     
-        terrainTex: GPUTexture
     ) {
         this.device   = device;
         this.width    = width;
@@ -87,7 +83,6 @@ export class ShallowWater {
         this.velocityYMap  = velocityYTex;
         this.changeInVelocityXMap = changeInVelocityXTex;
         this.changeInVelocityYMap = changeInVelocityYTex;
-        this.terrainTex = terrainTex;
 
         this.createBuffersAndLayouts();
         this.createBindGroups();
@@ -201,16 +196,14 @@ export class ShallowWater {
                 }
             ],
         });
-        
-        this.terrainBindGroupLayout = this.device.createBindGroupLayout({
-            label: 'terrain',
-            entries: [
-                { binding: 0, visibility: GPUShaderStage.VERTEX, texture: { sampleType: "unfilterable-float" } },
-            ],
-        });
     }
 
     private createBindGroups() {
+
+
+        
+
+
         this.heightBindGroup = this.device.createBindGroup({
             layout: this.ioBindGroupLayout,
             entries: [
@@ -293,6 +286,10 @@ export class ShallowWater {
                 },
             ],
         });
+
+
+
+
         this.constsBindGroup = this.device.createBindGroup({
             layout: this.constsBindGroupLayout,
             entries: [
@@ -300,16 +297,7 @@ export class ShallowWater {
                 { binding: 1, resource: { buffer: this.gridScaleBuffer } }
             ],
         });
-        this.terrainBindGroup = this.device.createBindGroup({
-            label: 'terrain bind group',
-            layout: this.terrainBindGroupLayout,
-            entries: [
-                {
-                    binding: 0,
-                    resource: this.terrainTex.createView(),
-                },
-            ],
-        });
+
         //Redone bind groups
         this.shallowHeightBindGroup = this.device.createBindGroup({
             layout: this.ioCombinedBindGroupLayout,
@@ -374,9 +362,16 @@ export class ShallowWater {
                 { binding: 3, resource: this.fluxYMap.createView() },
             ],
         });
+
+
+
+
     }
 
     private createPipeline() {
+
+
+
         this.initialVelocityXPipeline = this.device.createComputePipeline({
             label: 'Shallow Initial Velocity X Pipeline',
             layout: this.device.createPipelineLayout({
@@ -420,7 +415,6 @@ export class ShallowWater {
                 bindGroupLayouts: [
                     this.ioCombinedBindGroupLayout, // group(0)  previousHeight, velocityXIn, velocityYIn, heightOut
                     this.constsBindGroupLayout,   // group(1)  dt, gridScale
-                    this.terrainBindGroupLayout,  // group(2)  terrain
                 ],
             }),
             compute: {
@@ -437,7 +431,6 @@ export class ShallowWater {
                 bindGroupLayouts: [
                     this.ioCombinedBindGroupLayout, // group(0)  velocityX, fluxX, previousHeight, changeInVelocityX
                     this.constsBindGroupLayout,   // group(1)  dt, gridScale
-                    this.terrainBindGroupLayout,  // group(2)  terrain
                 ],
             }),
             compute: {
@@ -454,7 +447,6 @@ export class ShallowWater {
                 bindGroupLayouts: [
                     this.ioCombinedBindGroupLayout, // group(0)  velocityX, fluxY, previousHeight, changeInVelocityX
                     this.constsBindGroupLayout,   // group(1)  dt, gridScale
-                    this.terrainBindGroupLayout,  // group(2)  terrain
                 ],
             }),
             compute: {
@@ -471,7 +463,6 @@ export class ShallowWater {
                 bindGroupLayouts: [
                     this.ioCombinedBindGroupLayout, // group(0)  velocityY, fluxX, previousHeight, changeInVelocityY
                     this.constsBindGroupLayout,   // group(1)  dt, gridScale
-                    this.terrainBindGroupLayout,  // group(2)  terrain
                 ],
             }),
             compute: {
@@ -488,7 +479,6 @@ export class ShallowWater {
                 bindGroupLayouts: [
                     this.ioCombinedBindGroupLayout, // group(0)  velocityY, fluxY, previousHeight, changeInVelocityY
                     this.constsBindGroupLayout,   // group(1)  dt, gridScale
-                    this.terrainBindGroupLayout,  // group(2)  terrain
                 ],
             }),
             compute: {
@@ -505,7 +495,6 @@ export class ShallowWater {
                 bindGroupLayouts: [
                     this.ioCombinedBindGroupLayout, // group(0)  changeInVelocityX, height, velocityX, fluxX
                     this.constsBindGroupLayout,   // group(1)  dt, gridScale
-                    this.terrainBindGroupLayout,  // group(2)  terrain
                 ],
             }),
             compute: {
@@ -522,7 +511,6 @@ export class ShallowWater {
                 bindGroupLayouts: [
                     this.ioCombinedBindGroupLayout, // group(0)  changeInVelocityY, height, velocityY, fluxY
                     this.constsBindGroupLayout,   // group(1)  dt, gridScale
-                    this.terrainBindGroupLayout,  // group(2)  terrain
                 ],
             }),
             compute: {
@@ -600,7 +588,6 @@ export class ShallowWater {
             shallowHeightPass.setPipeline(this.shallowHeightPipeline);
             shallowHeightPass.setBindGroup(0, this.shallowHeightBindGroup);
             shallowHeightPass.setBindGroup(1, this.constsBindGroup);
-            shallowHeightPass.setBindGroup(2, this.terrainBindGroup);
             shallowHeightPass.dispatchWorkgroups(wgX, wgY);
             shallowHeightPass.end();
         }
@@ -612,7 +599,6 @@ export class ShallowWater {
             shallowVelocityXStep1Pass.setPipeline(this.shallowVelocityXStep1Pipeline);
             shallowVelocityXStep1Pass.setBindGroup(0, this.shallowVelocityXStep1BindGroup);
             shallowVelocityXStep1Pass.setBindGroup(1, this.constsBindGroup);
-            shallowVelocityXStep1Pass.setBindGroup(2, this.terrainBindGroup);
             shallowVelocityXStep1Pass.dispatchWorkgroups(wgX, wgY);
             shallowVelocityXStep1Pass.end();
         }
@@ -621,7 +607,6 @@ export class ShallowWater {
             shallowVelocityXStep2Pass.setPipeline(this.shallowVelocityXStep2Pipeline);
             shallowVelocityXStep2Pass.setBindGroup(0, this.shallowVelocityXStep2BindGroup);
             shallowVelocityXStep2Pass.setBindGroup(1, this.constsBindGroup);
-            shallowVelocityXStep2Pass.setBindGroup(2, this.terrainBindGroup);
             shallowVelocityXStep2Pass.dispatchWorkgroups(wgX, wgY);
             shallowVelocityXStep2Pass.end();
         }
@@ -631,7 +616,6 @@ export class ShallowWater {
             shallowVelocityYStep1Pass.setPipeline(this.shallowVelocityYStep1Pipeline);
             shallowVelocityYStep1Pass.setBindGroup(0, this.shallowVelocityYStep1BindGroup);
             shallowVelocityYStep1Pass.setBindGroup(1, this.constsBindGroup);
-            shallowVelocityYStep1Pass.setBindGroup(2, this.terrainBindGroup);
             shallowVelocityYStep1Pass.dispatchWorkgroups(wgX, wgY);
             shallowVelocityYStep1Pass.end();
         }
@@ -640,7 +624,6 @@ export class ShallowWater {
             shallowVelocityYStep2Pass.setPipeline(this.shallowVelocityYStep2Pipeline);
             shallowVelocityYStep2Pass.setBindGroup(0, this.shallowVelocityYStep2BindGroup);
             shallowVelocityYStep2Pass.setBindGroup(1, this.constsBindGroup);
-            shallowVelocityYStep2Pass.setBindGroup(2, this.terrainBindGroup);
             shallowVelocityYStep2Pass.dispatchWorkgroups(wgX, wgY);
             shallowVelocityYStep2Pass.end();
         }  
@@ -652,7 +635,6 @@ export class ShallowWater {
             updateVelocityAndFluxXPass.setPipeline(this.updateVelocityAndFluxXPipeline);
             updateVelocityAndFluxXPass.setBindGroup(0, this.updateVelocityAndFluxXBindGroup);
             updateVelocityAndFluxXPass.setBindGroup(1, this.constsBindGroup);
-            updateVelocityAndFluxXPass.setBindGroup(2, this.terrainBindGroup);
             updateVelocityAndFluxXPass.dispatchWorkgroups(wgX, wgY);
             updateVelocityAndFluxXPass.end();
         }
@@ -662,11 +644,15 @@ export class ShallowWater {
             updateVelocityAndFluxYPass.setPipeline(this.updateVelocityAndFluxYPipeline);
             updateVelocityAndFluxYPass.setBindGroup(0, this.updateVelocityAndFluxYBindGroup);
             updateVelocityAndFluxYPass.setBindGroup(1, this.constsBindGroup);
-            updateVelocityAndFluxYPass.setBindGroup(2, this.terrainBindGroup);
             updateVelocityAndFluxYPass.dispatchWorkgroups(wgX, wgY);
             updateVelocityAndFluxYPass.end();
         }
+        
 
+
+        
+        
+        
         this.device.queue.submit([encoder.finish()]);
     }
 

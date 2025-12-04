@@ -7,7 +7,6 @@
 @group(1) @binding(0) var<uniform> timeStep: f32;
 @group(1) @binding(1) var<uniform> gridScale: f32;
 
-@group(2) @binding(0) var terrainTexture: texture_2d<f32>;
 
 fn upWindHeight(vel: f32) -> i32 {
     if(vel <= 0.0)
