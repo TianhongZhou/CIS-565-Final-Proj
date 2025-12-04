@@ -205,7 +205,7 @@ export class ShallowWater {
         this.terrainBindGroupLayout = this.device.createBindGroupLayout({
             label: 'terrain',
             entries: [
-                { binding: 0, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "unfilterable-float" } },
+                { binding: 0, visibility: GPUShaderStage.VERTEX, texture: { sampleType: "unfilterable-float" } },
             ],
         });
     }

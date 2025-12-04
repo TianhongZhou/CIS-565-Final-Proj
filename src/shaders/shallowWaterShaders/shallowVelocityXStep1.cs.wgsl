@@ -40,7 +40,12 @@ fn sampleFluxVel(tex: texture_storage_2d<r32float, read_write>, pos: vec2i, size
     value = textureLoad(tex, clampedPos).x;
     
     return value;
+    
+
 }
+
+
+
 
 @compute
 @workgroup_size(${threadsInDiffusionBlockX}, ${threadsInDiffusionBlockY}, 1)
@@ -54,6 +59,14 @@ fn shallowVelocityXStep1(@builtin(global_invocation_id) globalIdx: vec3u) {
     let ix = i32(globalIdx.x);
     let iy = i32(globalIdx.y);
     
+    /*
+    let velXRight = textureLoad(velocityXIn, vec2i(ix, iy)).x;
+    let velXLeft = textureLoad(velocityXIn, vec2i(clampI(ix - 1, 0, i32(size.x) - 1), iy)).x;
+
+    let fluxXRight = textureLoad(fluxXIn, vec2i(ix, iy)).x;
+    let fluxXLeft = textureLoad(fluxXIn, vec2i(clampI(ix - 1, 0, i32(size.x) - 1), iy)).x;
+    let fluxXCenter = (fluxXLeft + fluxXRight) / 2.0;
+    */
     let velXRight = sampleFluxVel(velocityXIn, vec2i(ix, iy), size);
     let velXLeft = sampleFluxVel(velocityXIn, vec2i(ix - 1, iy), size);
 
@@ -62,10 +75,7 @@ fn shallowVelocityXStep1(@builtin(global_invocation_id) globalIdx: vec3u) {
     let fluxXCenter = (fluxXLeft + fluxXRight) / 2.0;
 
     let H_EPS : f32 = 1e-4;
-
-    let rightIdx = vec2i(clampI(ix + i32(upWindHeight(velXRight)), 0, i32(size.x) - 1), iy);
-    let terrainRight = textureLoad(terrainTexture, rightIdx, 0).x;
-    let heightRight = max(textureLoad(heightIn, rightIdx).x, H_EPS) + terrainRight;
+    let heightRight = max(textureLoad(heightIn, vec2i(clampI(ix + i32(upWindHeight(velXRight)), 0, i32(size.x) - 1), iy)).x, H_EPS);
     let changeInVelocity = -(fluxXCenter * (velXRight - velXLeft)) / (gridScale * heightRight);
     
     //Assuming this is the first step. Subsequent steps will add to this value, so will need to both read and write.
