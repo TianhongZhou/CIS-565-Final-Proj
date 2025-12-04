@@ -167,6 +167,8 @@ export class NaiveRenderer extends renderer.Renderer {
 
     private initMode: 'default' | 'terrain' | 'ship' | 'click';
 
+    private terrainArr: Float32Array;
+
     // --- Ship imagined ball state ---
     private shipPos: Vec3 = vec3.fromValues(0, shaders.constants.water_base_level, 0);
     private shipRadius: number = 0.1; 
@@ -538,6 +540,7 @@ export class NaiveRenderer extends renderer.Renderer {
                 { binding: 0, visibility: GPUShaderStage.VERTEX, sampler: { type: "non-filtering" } },
                 { binding: 1, visibility: GPUShaderStage.VERTEX, texture: { sampleType: "unfilterable-float" } },
                 { binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: "uniform" } },
+                { binding: 3, visibility: GPUShaderStage.VERTEX, texture: { sampleType: "unfilterable-float" } },
             ]
         });
 
@@ -548,6 +551,7 @@ export class NaiveRenderer extends renderer.Renderer {
                 { binding: 0, resource: this.heightSampler },
                 { binding: 1, resource: this.heightTexture.createView() },
                 { binding: 2, resource: { buffer: this.heightConsts } },
+                { binding: 3, resource: this.terrainTexture.createView() },
             ]
         });
 
@@ -769,6 +773,8 @@ export class NaiveRenderer extends renderer.Renderer {
         const freq = 16.0;     
 
         this.seedHeightFields(this.initMode, terrainArr, highArr, Wtex, Htex);
+
+        this.terrainArr = terrainArr;
 
         this.updateTexture(terrainArr, this.terrainTexture);
         this.updateTexture(terrainZeroArr,  this.terrainZeroTexture);
@@ -992,7 +998,7 @@ export class NaiveRenderer extends renderer.Renderer {
         for (let y = 0; y < Htex; y++) {
             for (let x = 0; x < Wtex; x++) {
                 const idx = y * Wtex + x;
-                terrainArr[idx] = 0.0;
+                terrainArr[idx] = (x + y) * 4 / (Wtex + Htex);
 
                 const u = x / Wtex;
                 const v = y / Htex;
@@ -1673,7 +1679,7 @@ export class NaiveRenderer extends renderer.Renderer {
         this.shipPos[0] = Math.min(this.waterScaleX,  Math.max(-this.waterScaleX,  this.shipPos[0]));
         this.shipPos[2] = Math.min(this.waterScaleZ,  Math.max(-this.waterScaleZ,  this.shipPos[2]));
 
-        this.shipPos[1] = shaders.constants.water_base_level;
+        this.shipPos[1] = this.getWaterHeightAtWorldPos(this.shipPos[0], this.shipPos[2]);
 
         // Update model transform to follow imagined ship position/orientation
         const angle = Math.atan2(this.shipForward[0], this.shipForward[2]);
@@ -1790,6 +1796,24 @@ export class NaiveRenderer extends renderer.Renderer {
         this.heightAddCS.run(this.heightTexture,     this.bumpTexture, W, H);
         this.heightAddCS.run(this.lowFreqTexture,    this.bumpTexture, W, H);
         this.heightAddCS.run(this.heightPrevTexture, this.bumpTexture, W, H);
+    }
+
+    private getWaterHeightAtWorldPos(worldX: number, worldZ: number): number {
+        const u = (worldX / (2 * this.waterScaleX)) + 0.5;
+        const v = (worldZ / (2 * this.waterScaleZ)) + 0.5;
+
+        if (u < 0 || u > 1 || v < 0 || v > 1) {
+            return shaders.constants.water_base_level;
+        }
+
+        const texX = Math.floor(u * (this.heightW - 1));
+        const texY = Math.floor(v * (this.heightH - 1));
+        const idx = texY * this.heightW + texX;
+
+        const waterHeight = this.heightArr[idx];
+        const terrainHeight = this.terrainArr[idx];
+
+        return waterHeight + terrainHeight;
     }
 }
 
