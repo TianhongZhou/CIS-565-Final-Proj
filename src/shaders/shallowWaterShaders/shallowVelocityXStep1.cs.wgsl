@@ -9,7 +9,7 @@
 
 
 fn upWindHeight(vel: f32) -> i32 {
-    if(vel <= 0.0)
+    if(vel < 0.0)
     {
         return 1;
     }

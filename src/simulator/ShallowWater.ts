@@ -16,6 +16,7 @@ export class ShallowWater {
     private velocityYMap: GPUTexture;
     private changeInVelocityXMap: GPUTexture;
     private changeInVelocityYMap: GPUTexture;
+    private terrainMap!: GPUTexture;
 
 
     private ioBindGroupLayout!: GPUBindGroupLayout;
@@ -40,6 +41,7 @@ export class ShallowWater {
     private shallowVelocityYStep2BindGroup!: GPUBindGroup;
     private updateVelocityAndFluxXBindGroup!: GPUBindGroup;
     private updateVelocityAndFluxYBindGroup!: GPUBindGroup;
+    private terrainBindGroup!: GPUBindGroup;
 
     private timeStepBuffer!: GPUBuffer;
     private gridScaleBuffer!: GPUBuffer;
@@ -58,6 +60,8 @@ export class ShallowWater {
     private updateVelocityAndFluxXPipeline!: GPUComputePipeline;
     private updateVelocityAndFluxYPipeline!: GPUComputePipeline;
 
+    private terrainCheckPipeline!: GPUComputePipeline;
+
 
     constructor(
         device: GPUDevice,
@@ -71,6 +75,7 @@ export class ShallowWater {
         velocityYTex: GPUTexture,     
         changeInVelocityXTex: GPUTexture,      
         changeInVelocityYTex: GPUTexture,     
+        terrainTex: GPUTexture
     ) {
         this.device   = device;
         this.width    = width;
@@ -83,6 +88,7 @@ export class ShallowWater {
         this.velocityYMap  = velocityYTex;
         this.changeInVelocityXMap = changeInVelocityXTex;
         this.changeInVelocityYMap = changeInVelocityYTex;
+        this.terrainMap = terrainTex;
 
         this.createBuffersAndLayouts();
         this.createBindGroups();
@@ -295,6 +301,16 @@ export class ShallowWater {
             entries: [
                 { binding: 0, resource: { buffer: this.timeStepBuffer } },
                 { binding: 1, resource: { buffer: this.gridScaleBuffer } }
+            ],
+        });
+
+        this.terrainBindGroup = this.device.createBindGroup({
+            layout: this.ioBindGroupLayout,
+            entries: [
+                {
+                    binding: 0,
+                    resource: this.terrainMap.createView(),
+                },
             ],
         });
 
@@ -521,6 +537,24 @@ export class ShallowWater {
                 entryPoint: 'updateVelocityAndFluxY',
             },
         });
+        this.terrainCheckPipeline = this.device.createComputePipeline({
+            label: 'Terrain Check Pipeline',
+            layout: this.device.createPipelineLayout({
+                bindGroupLayouts: [
+                    this.ioBindGroupLayout, // group(0) terrain
+                    this.ioBindGroupLayout, // group(1) height
+                    this.ioBindGroupLayout, // group(2) fluxX
+                    this.ioBindGroupLayout, // group(3) fluxY
+                ],
+            }),
+            compute: {
+                module: this.device.createShaderModule({
+                    label: 'TerrainCheck',
+                    code: shaders.terrainCheckSrc,
+                }),
+                entryPoint: 'terrainCheck',
+            },
+        });
     }
 
     step(dt: number) {
@@ -539,6 +573,17 @@ export class ShallowWater {
         const wgY = Math.ceil(
             this.height / shaders.constants.threadsInDiffusionBlockY
         );
+
+        {
+            const terrainCheckPass = encoder.beginComputePass();
+            terrainCheckPass.setPipeline(this.terrainCheckPipeline);
+            terrainCheckPass.setBindGroup(0, this.terrainBindGroup);
+            terrainCheckPass.setBindGroup(1, this.heightBindGroup);
+            terrainCheckPass.setBindGroup(2, this.fluxXBindGroup);
+            terrainCheckPass.setBindGroup(3, this.fluxYBindGroup);
+            terrainCheckPass.dispatchWorkgroups(wgX, wgY);
+            terrainCheckPass.end();
+        }
         
         //Initial Velocity X
         {

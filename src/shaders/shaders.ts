@@ -27,6 +27,7 @@ import shallowVelocityYStep1 from './shallowWaterShaders/shallowVelocityYStep1.c
 import shallowVelocityYStep2 from './shallowWaterShaders/shallowVelocityYStep2.cs.wgsl?raw';
 import updateVelocityAndFluxX from './shallowWaterShaders/updateVelocityAndFluxX.cs.wgsl?raw';
 import updateVelocityAndFluxY from './shallowWaterShaders/updateVelocityAndFluxY.cs.wgsl?raw';
+import terrainCheck from './shallowWaterShaders/terrainCheck.cs.wgsl?raw';
 
 import addOn from './addOn.cs.wgsl?raw';
 
@@ -80,5 +81,6 @@ export const shallowVelocityYStep1Src: string = processShaderRaw(shallowVelocity
 export const shallowVelocityYStep2Src: string = processShaderRaw(shallowVelocityYStep2);
 export const updateVelocityAndFluxXSrc: string = processShaderRaw(updateVelocityAndFluxX);
 export const updateVelocityAndFluxYSrc: string = processShaderRaw(updateVelocityAndFluxY);
+export const terrainCheckSrc: string = processShaderRaw(terrainCheck);
 
 export const addOnSrc: string = processShaderRaw(addOn);

@@ -866,7 +866,8 @@ export class NaiveRenderer extends renderer.Renderer {
             this.lowFreqVelocityXTexture,
             this.lowFreqVelocityYTexture,
             this.changeInLowFreqVelocityXTexture,
-            this.changeInLowFreqVelocityYTexture
+            this.changeInLowFreqVelocityYTexture,
+            this.terrainTexture
         );
 
         
@@ -878,7 +879,7 @@ export class NaiveRenderer extends renderer.Renderer {
         const smoothDepth = new Float32Array(this.heightW * this.heightH);
         for (let i = 0; i < smoothDepth.length; ++i) {
             // Element-wise difference: water height minus terrain height
-            const depth = this.lowArr[i] - terrainArr[i];
+            const depth = this.lowArr[i];
             // Clamp to a small positive value to avoid zero / negative depth,
             // which would cause problems in the dispersion relation.
             smoothDepth[i] = Math.max(depth, 0.01);
@@ -998,7 +999,7 @@ export class NaiveRenderer extends renderer.Renderer {
         for (let y = 0; y < Htex; y++) {
             for (let x = 0; x < Wtex; x++) {
                 const idx = y * Wtex + x;
-                terrainArr[idx] = (x + y) * 4 / (Wtex + Htex);
+                
 
                 const u = x / Wtex;
                 const v = y / Htex;
@@ -1034,6 +1035,40 @@ export class NaiveRenderer extends renderer.Renderer {
                 this.lowArr[idx] = baseWater;
                 highArr[idx] = high;
                 this.heightArr[idx] = baseWater;
+
+                terrainArr[idx] = baseWater - 0.05;
+                //Change terrain height near borders to create "walls"
+                let borderMargin = 100;
+                
+                if (x < borderMargin || x > Wtex - borderMargin || y < borderMargin || y > Htex - borderMargin) {
+                    terrainArr[idx] = baseWater + 0.0;
+                    this.heightArr[idx] = baseWater + 0.35;
+                }
+                else{
+                    //Make the terrain form a bump in the center
+                    const dx = x - centerX;
+                    const dy = y - centerY;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    let waterBumpHeight = 0.25;
+                    if (dist < bumpRadius) {
+                        const bump = waterBumpHeight * Math.cos((dist / (bumpRadius * 0.5)) * (Math.PI / 2));
+                        terrainArr[idx] = baseWater - 0.05 - bump;
+                        this.heightArr[idx] = baseWater - bump;
+                    }
+                   //this.heightArr[idx] = baseWater - waterBumpHeight;
+                }
+                
+               /*
+               if (y < borderMargin || y > Htex - borderMargin) {
+                    terrainArr[idx] = baseWater + 0.01;
+                    this.heightArr[idx] = baseWater + 0.0;
+                }
+                if(y < borderMargin - 5 || y > Htex - borderMargin + 5) {
+                    terrainArr[idx] = baseWater - 0.10;
+                    this.heightArr[idx] = baseWater - 0.05;
+                }
+                    */
+
             }
         }
     }
@@ -1244,7 +1279,7 @@ export class NaiveRenderer extends renderer.Renderer {
             this.updateShipInteraction(dt);
         }
 
-        this.simulator.simulate(dt);
+        this.simulator.simulate(1.0/60.0);
     }
 
     private updateReflectionUniforms() {
@@ -1813,7 +1848,7 @@ export class NaiveRenderer extends renderer.Renderer {
         const waterHeight = this.heightArr[idx];
         const terrainHeight = this.terrainArr[idx];
 
-        return waterHeight + terrainHeight;
+        return waterHeight;
     }
 }
 

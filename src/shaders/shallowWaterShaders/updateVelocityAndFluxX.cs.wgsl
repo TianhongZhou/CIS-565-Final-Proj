@@ -67,6 +67,7 @@ fn updateVelocityAndFluxX(@builtin(global_invocation_id) globalIdx: vec3u) {
     let height = max(textureLoad(heightIn, vec2i(ix + i32(upWindHeight(newVel)), iy)).x, H_EPS);
     var newFlux = newVel * height;
     newFlux = clamp(newFlux, -0.25 * gridScale * height / timeStep, 0.25 * gridScale * height / timeStep);
+    newFlux *= 0.99; //Damping to improve stability
 
     textureStore(velocityInOut, vec2u(globalIdx.x, globalIdx.y), vec4f(newVel, 0, 0, 0));
     textureStore(fluxOut, vec2u(globalIdx.x, globalIdx.y), vec4f(newFlux, 0, 0, 0));

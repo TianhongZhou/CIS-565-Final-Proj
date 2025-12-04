@@ -40,7 +40,7 @@ fn T(uv: vec2<f32>) -> f32 {
 
 // Sample total height (water + terrain) at a given UV
 fn totalHeight(uv: vec2<f32>) -> f32 {
-  return H(uv) + T(uv);
+  return H(uv);
 }
 
 @vertex

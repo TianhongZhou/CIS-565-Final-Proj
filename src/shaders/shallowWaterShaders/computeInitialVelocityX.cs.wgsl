@@ -14,7 +14,7 @@ fn clampI(v: i32, a: i32, b: i32) -> i32 {
 
 //It says we should upwind height, but we don't have the velocity yet, so I think we can just use the flux?
 fn upWindHeight(vel: f32) -> i32 {
-    if(vel <= 0.0)
+    if(vel < 0.0)
     {
         return 1;
     }
