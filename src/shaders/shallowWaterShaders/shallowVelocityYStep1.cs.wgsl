@@ -57,18 +57,16 @@ fn shallowVelocityYStep1(@builtin(global_invocation_id) globalIdx: vec3u) {
     
     let ix = i32(globalIdx.x);
     let iy = i32(globalIdx.y);
-    /*
-    let velYUp = textureLoad(velocityYIn, vec2i(ix, iy)).x;
-    let velYUpLeft = textureLoad(velocityYIn, vec2i(clampI(ix - 1, 0, i32(size.x) - 1), iy)).x;
-
-    let fluxXLeft = textureLoad(fluxXIn, vec2i(clampI(ix - 1, 0, i32(size.x) - 1), iy)).x;
-    */
+   
     let velYUp = sampleFluxVel(velocityYIn, vec2i(ix, iy), size);
     let velYUpLeft = sampleFluxVel(velocityYIn, vec2i(ix - 1, iy), size);
     let fluxXLeft = sampleFluxVel(fluxXIn, vec2i(ix - 1, iy), size);
 
     let H_EPS : f32 = 1e-4;
-    let heightUp = max(textureLoad(heightIn, vec2i(ix, clampI(iy + i32(upWindHeight(velYUp)), 0, i32(size.y) - 1))).x, H_EPS);
+
+    let upIdx = vec2i(ix, clampI(iy + i32(upWindHeight(velYUp)), 0, i32(size.y) - 1));
+    let terrainUp = textureLoad(terrainTexture, upIdx, 0).x;
+    let heightUp = max(textureLoad(heightIn, upIdx).x, H_EPS) + terrainUp;
     let changeInVelocity = -(fluxXLeft * (velYUp - velYUpLeft)) / (gridScale * heightUp);
     
     //Assuming this is the first step. Subsequent steps will add to this value, so will need to both read and write.

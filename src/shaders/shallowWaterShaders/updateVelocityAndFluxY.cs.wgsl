@@ -67,7 +67,10 @@ fn updateVelocityAndFluxY(@builtin(global_invocation_id) globalIdx: vec3u) {
     newVel = clamp(newVel, -0.25 * gridScale / timeStep, 0.25 * gridScale / timeStep);
 
     let H_EPS : f32 = 1e-4;
-    let height = max(textureLoad(heightIn, vec2i(ix, iy + i32(upWindHeight(newVel)))).x, H_EPS);
+
+    let upIdx = vec2i(ix, iy + i32(upWindHeight(newVel)));
+    let terrainUp = textureLoad(terrainTexture, upIdx, 0).x;
+    let height = max(textureLoad(heightIn, upIdx).x, H_EPS) + 0;
     var newFlux = newVel * height;
     newFlux = clamp(newFlux, -0.25 * gridScale * height / timeStep, 0.25 * gridScale * height / timeStep);
 
