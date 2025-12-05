@@ -100,6 +100,8 @@ export class NaiveRenderer extends renderer.Renderer {
     // Cached water extents for screen->world mapping
     private waterScaleX = 10;
     private waterScaleZ = 10;
+    private navTerrainMax = shaders.constants.water_base_level + 0.02;
+    private initialized = false;
 
     // Diffuse compute
     private diffuseHeight: DiffuseCS;
@@ -194,12 +196,27 @@ export class NaiveRenderer extends renderer.Renderer {
         uv: { u: number; v: number };
     }> = [];
 
+    private npcShips: Array<{
+        pos: Vec3;
+        forward: Vec3;
+        modelBuffer: GPUBuffer;
+        modelBindGroup: GPUBindGroup;
+        waypoints: Vec3[];
+        waypointIndex: number;
+        bumpCur: Float32Array;
+        bumpPrev: Float32Array;
+        bumpDelta: Float32Array;
+        warmup: number;
+    }> = [];
+
+    private followMode = false;
+
     private initMode: 'default' | 'terrain' | 'ship' | 'click';
 
     private terrainArr: Float32Array;
 
     // --- Ship imagined ball state ---
-    private shipPos: Vec3 = vec3.fromValues(0, shaders.constants.water_base_level, 0);
+    private shipPos: Vec3 = vec3.fromValues(5, shaders.constants.water_base_level, 5);
     private shipRadius: number = 0.1; 
     private shipSpeed: number = 1.0;
     private shipProjectileSpeed: number = 6.0;
@@ -228,10 +245,11 @@ export class NaiveRenderer extends renderer.Renderer {
             this.shipKeyUpHandler = (e: KeyboardEvent) => this.handleShipKey(e.key, false);
             window.addEventListener('keydown', this.shipKeyDownHandler);
             window.addEventListener('keyup', this.shipKeyUpHandler);
+            window.addEventListener('keydown', this.handleFollowToggle);
         }
 
         const base = shaders.constants.water_base_level;
-        this.fixedWaterPlaneHeight = base;
+        this.fixedWaterPlaneHeight = base + 0.2;
 
         this.sceneUniformsBindGroupLayout = renderer.device.createBindGroupLayout({
             label: "scene uniforms bind group layout",
@@ -830,7 +848,7 @@ export class NaiveRenderer extends renderer.Renderer {
         // --- Projectile pipeline (simple colored sphere) ---
         this.createProjectileResources();
 
-        // --- Diffuse step ---
+        // --- Diffuse step and simulation setup ---
         this.initRowInfoIfNeeded();
 
         const terrainArr = new Float32Array(this.heightW * this.heightH);
@@ -1030,6 +1048,11 @@ export class NaiveRenderer extends renderer.Renderer {
             this.flowRecombineY,
             this.heightRecombine
         );
+
+        // NPCs depend on terrainArr, so init after it is ready.
+        this.initNpcShips();
+
+        this.initialized = true;
     }
 
     private createProjectileResources() {
@@ -1232,6 +1255,8 @@ export class NaiveRenderer extends renderer.Renderer {
             reflectionPass.setIndexBuffer(primitive.indexBuffer, 'uint32');
             reflectionPass.drawIndexed(primitive.numIndices);
         });
+        // Draw NPC ships in reflection
+        this.drawNpcShips(reflectionPass, this.passFlagsBindGroupReflection, this.reflectionSceneUniformsBindGroup);
 
         reflectionPass.end();
 
@@ -1275,6 +1300,8 @@ export class NaiveRenderer extends renderer.Renderer {
             renderPass.setIndexBuffer(primitive.indexBuffer, 'uint32');
             renderPass.drawIndexed(primitive.numIndices);
         });
+        // Draw NPC ships in main pass
+        this.drawNpcShips(renderPass, this.passFlagsBindGroupMain, this.sceneUniformsBindGroup);
 
         // Draw projectiles (simple spheres)
         if (this.projectiles.length > 0) {
@@ -1344,6 +1371,7 @@ export class NaiveRenderer extends renderer.Renderer {
             window.removeEventListener('keyup', this.shipKeyUpHandler);
             this.shipKeyUpHandler = undefined;
         }
+        window.removeEventListener('keydown', this.handleFollowToggle);
         super.stop();
     }
 
@@ -1409,6 +1437,7 @@ export class NaiveRenderer extends renderer.Renderer {
     // Called every frame before drawing.
     protected override onBeforeDraw(dtMs: number): void {
         const dt = dtMs / 1000; 
+        if (!this.initialized || !this.simulator) return;
 
         const encoder = renderer.device.createCommandEncoder();
 
@@ -1433,6 +1462,10 @@ export class NaiveRenderer extends renderer.Renderer {
         if (this.initMode === 'ship' || this.initMode === 'default') {
             this.updateShipInteraction(dt);
             this.updateProjectiles(dt);
+            this.updateNpcShips(dt);
+            if (this.followMode) {
+                this.updateFollowCamera();
+            }
         }
 
         this.simulator.simulate(1.0/240.0);
@@ -1820,6 +1853,12 @@ export class NaiveRenderer extends renderer.Renderer {
         return vec3.clone(this.shipPos);
     }
 
+    private handleFollowToggle = (e: KeyboardEvent) => {
+        if (e.key.toLowerCase() === 'z' && (this.initMode === 'default' || this.initMode === 'ship')) {
+            this.followMode = !this.followMode;
+        }
+    };
+
     // --- Ship interaction: imagined ball pressing into height field ---
     private updateShipInteraction(dt: number) {
         if (this.initMode !== 'ship' && this.initMode !== 'default') return;
@@ -1836,22 +1875,37 @@ export class NaiveRenderer extends renderer.Renderer {
 
         let moveX = 0;
         let moveZ = 0;
+        let turn = 0;
 
-        if (this.shipKeys['ArrowUp']) {
-            moveX += forwardCam[0];
-            moveZ += forwardCam[2];
-        }
-        if (this.shipKeys['ArrowDown']) {
-            moveX -= forwardCam[0];
-            moveZ -= forwardCam[2];
-        }
-        if (this.shipKeys['ArrowLeft']) {
-            moveX += rightCam[0];
-            moveZ += rightCam[2];
-        }
-        if (this.shipKeys['ArrowRight']) {
-            moveX -= rightCam[0];
-            moveZ -= rightCam[2];
+        if (this.followMode) {
+            // In follow mode: left/right rotate ship in place; up/down move along ship forward.
+            if (this.shipKeys['ArrowLeft']) turn += 1;
+            if (this.shipKeys['ArrowRight']) turn -= 1;
+            if (this.shipKeys['ArrowUp']) {
+                moveX += this.shipForward[0];
+                moveZ += this.shipForward[2];
+            }
+            if (this.shipKeys['ArrowDown']) {
+                moveX -= this.shipForward[0];
+                moveZ -= this.shipForward[2];
+            }
+        } else {
+            if (this.shipKeys['ArrowUp']) {
+                moveX += forwardCam[0];
+                moveZ += forwardCam[2];
+            }
+            if (this.shipKeys['ArrowDown']) {
+                moveX -= forwardCam[0];
+                moveZ -= forwardCam[2];
+            }
+            if (this.shipKeys['ArrowLeft']) {
+                moveX += rightCam[0];
+                moveZ += rightCam[2];
+            }
+            if (this.shipKeys['ArrowRight']) {
+                moveX -= rightCam[0];
+                moveZ -= rightCam[2];
+            }
         }
 
         const move: Vec3 = vec3.fromValues(moveX, 0, moveZ);
@@ -1859,16 +1913,34 @@ export class NaiveRenderer extends renderer.Renderer {
 
         if (len > 1e-4) {
             vec3.scale(move, this.shipSpeed * dt / len, move);
-            this.shipPos[0] += move[0];
-            this.shipPos[2] += move[2];
+            const nextX = this.shipPos[0] + move[0];
+            const nextZ = this.shipPos[2] + move[2];
+            const clamped = this.clampToTerrain(nextX, nextZ, this.shipPos[0], this.shipPos[2]);
+            this.shipPos[0] = clamped[0];
+            this.shipPos[2] = clamped[1];
 
             const moveDir: Vec3 = vec3.fromValues(move[0], 0, move[2]);
             vec3.normalize(moveDir, moveDir);
 
-            vec3.lerp(this.shipForward, moveDir, 0.2, this.shipForward);
-            vec3.normalize(this.shipForward, this.shipForward);
+            if (!this.followMode) {
+                vec3.lerp(this.shipForward, moveDir, 0.01, this.shipForward);
+                vec3.normalize(this.shipForward, this.shipForward);
+            }
 
             this.applyShipBump(dt);
+        }
+
+        // In follow mode, left/right turns rotate ship in place.
+        if (this.followMode && (this.shipKeys['ArrowLeft'] || this.shipKeys['ArrowRight'])) {
+            const turnDir = (this.shipKeys['ArrowLeft'] ? 1 : 0) + (this.shipKeys['ArrowRight'] ? -1 : 0);
+            if (turnDir !== 0) {
+                const yawSpeed = 1.5; // rad/s
+                const yaw = turnDir * yawSpeed * dt;
+                const rot = mat4.rotationY(yaw);
+                const f = vec3.transformMat4(this.shipForward, rot);
+                vec3.normalize(f, f);
+                this.shipForward = f;
+            }
         }
         
         this.shipPos[0] = Math.min(this.waterScaleX,  Math.max(-this.waterScaleX,  this.shipPos[0]));
@@ -1915,83 +1987,7 @@ export class NaiveRenderer extends renderer.Renderer {
             this.shipBumpArrDelta = new Float32Array(N);
         }
 
-        const cur   = this.shipBumpArr!;
-        const prev  = this.shipBumpArrPrev!;
-        const delta = this.shipBumpArrDelta!;
-
-        prev.set(cur);
-        cur.fill(0);
-
-        const sx = this.waterScaleX;
-        const sz = this.waterScaleZ;
-
-        const cx = this.shipPos[0];
-        const cz = this.shipPos[2];
-
-        let forward = this.shipForward;
-
-        const forwardXZ: Vec3 = vec3.fromValues(forward[0], 0, forward[2]);
-        if (vec3.length(forwardXZ) < 1e-4) {
-            return;
-        }
-        vec3.normalize(forwardXZ, forwardXZ);
-
-        const right: Vec3 = vec3.fromValues(forwardXZ[2], 0, -forwardXZ[0]);
-
-        const L = this.shipRadius * 3.0;  
-        const baseHalfWidth = this.shipRadius * 1.0; 
-
-        const strength = 20.0; 
-
-        for (let j = 0; j < H; j++) {
-            const v = j / (H - 1);
-            const worldZ = (v - 0.5) * 2 * sz;
-
-            for (let i = 0; i < W; i++) {
-                const u = i / (W - 1);
-                const worldX = (u - 0.5) * 2 * sx;
-
-                const dx = worldX - cx;
-                const dz = worldZ - cz;
-
-                const s = dx * forwardXZ[0] + dz * forwardXZ[2];
-                const t = dx * right[0]     + dz * right[2];
-
-                if (s < 0 || s > L) continue;
-
-                const halfWidthAtS = baseHalfWidth * (1.0 - s / L);
-                if (halfWidthAtS <= 0.0) continue;
-                if (Math.abs(t) > halfWidthAtS) continue;
-
-                const wAlong = 1.0 - s / L;              
-                const wSide  = 1.0 - Math.abs(t) / halfWidthAtS;
-                const w = wAlong * wSide;
-
-                if (w <= 0.0) continue;
-
-                const d = -strength * w * 1.1;
-
-                const idx = j * W + i;
-                cur[idx] += d;
-            }
-        }
-
-        let sum = 0;
-        for (let i = 0; i < N; i++) {
-            delta[i] = cur[i] - prev[i];
-            sum += delta[i];
-        }
-
-        const mean = sum / N;
-        for (let i = 0; i < N; i++) {
-            delta[i] = (delta[i] - mean) * dt;
-        }
-
-        this.updateTexture(delta, this.bumpTexture);
-
-        this.heightAddCS.run(this.heightTexture,     this.bumpTexture, W, H);
-        this.heightAddCS.run(this.lowFreqTexture,    this.bumpTexture, W, H);
-        this.heightAddCS.run(this.heightPrevTexture, this.bumpTexture, W, H);
+        this.applyShipBumpAt(this.shipPos, this.shipForward, dt, this.shipBumpArr!, this.shipBumpArrPrev!, this.shipBumpArrDelta!, 0.5);
     }
 
     private updateProjectiles(dt: number) {
@@ -2013,6 +2009,124 @@ export class NaiveRenderer extends renderer.Renderer {
         for (let j = toRemove.length - 1; j >= 0; j--) {
             this.projectiles.splice(toRemove[j], 1);
         }
+    }
+
+    private initNpcShips() {
+        const count = 5;
+        const radiusMin = this.waterScaleX * 0.2;
+        const radiusMax = this.waterScaleX * 0.8;
+        const N = this.heightW * this.heightH;
+        for (let i = 0; i < count; i++) {
+            this.npcShips.push(this.createNpcShip(i, count, radiusMin, radiusMax, N));
+        }
+    }
+
+    private createNpcShip(idx: number, count: number, radiusMin: number, radiusMax: number, N: number) {
+        const theta = (idx / count) * Math.PI * 2;
+        const r = radiusMin + Math.random() * (radiusMax - radiusMin);
+        const pos = vec3.fromValues(Math.cos(theta) * r, this.fixedWaterPlaneHeight, Math.sin(theta) * r);
+        const forward = vec3.normalize(vec3.fromValues(-Math.sin(theta), 0, Math.cos(theta)));
+        const waypoints: Vec3[] = [];
+        const waypointCount = 5 + Math.floor(Math.random() * 3);
+        for (let w = 0; w < waypointCount; w++) {
+            const ang = Math.random() * Math.PI * 2;
+            const rad = radiusMin + Math.random() * (radiusMax - radiusMin);
+            const wx = Math.cos(ang) * rad;
+            const wz = Math.sin(ang) * rad;
+            const clamped = this.clampToTerrain(wx, wz, pos[0], pos[2]);
+            waypoints.push(vec3.fromValues(clamped[0], this.fixedWaterPlaneHeight, clamped[1]));
+        }
+        waypoints.push(vec3.clone(pos)); // loop back near start
+
+        const modelBuffer = renderer.device.createBuffer({
+            label: `npc ship model buffer ${idx}`,
+            size: 16 * 4,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        });
+        const modelBindGroup = renderer.device.createBindGroup({
+            layout: renderer.modelBindGroupLayout,
+            entries: [{ binding: 0, resource: { buffer: modelBuffer } }],
+        });
+
+        return {
+            pos,
+            forward,
+            modelBuffer,
+            modelBindGroup,
+            waypoints,
+            waypointIndex: 0,
+            bumpCur: new Float32Array(N),
+            bumpPrev: new Float32Array(N),
+            bumpDelta: new Float32Array(N),
+            warmup: 2.0, // seconds to skip applying bumps/motion
+        };
+    }
+
+    private updateNpcShips(dt: number) {
+        if (this.npcShips.length === 0) return;
+        const speed = this.shipSpeed * 0.6;
+        for (const npc of this.npcShips) {
+            if (npc.warmup > 0) {
+                npc.warmup = Math.max(0, npc.warmup - dt);
+                continue;
+            }
+            const target = npc.waypoints[npc.waypointIndex];
+            const toTarget = vec3.sub(target, npc.pos);
+            const dist = vec3.length(toTarget);
+            if (dist < 0.05) {
+                npc.waypointIndex = (npc.waypointIndex + 1) % npc.waypoints.length;
+                continue;
+            }
+            const dir = vec3.scale(toTarget, 1 / dist);
+            const step = Math.min(dist, speed * dt);
+            if (step <= 1e-4) continue;
+
+            vec3.scale(dir, step, dir);
+            const nextX = npc.pos[0] + dir[0];
+            const nextZ = npc.pos[2] + dir[2];
+            if (!this.isTerrainNavigable(nextX, nextZ)) {
+                // If blocked, reset waypoints from current position.
+                npc.waypoints = this.createNpcShip(0, 1, this.waterScaleX * 0.2, this.waterScaleX * 0.8, this.heightW * this.heightH).waypoints;
+                npc.waypointIndex = 0;
+                continue;
+            }
+            npc.pos[0] = nextX;
+            npc.pos[2] = nextZ;
+            npc.pos[1] = this.fixedWaterPlaneHeight;
+            npc.forward = vec3.normalize(vec3.fromValues(dir[0], 0, dir[2]));
+
+            const angle = Math.atan2(npc.forward[0], npc.forward[2]);
+            const rot = mat4.rotationY(angle);
+            const scl = mat4.scaling([this.shipModelScale, this.shipModelScale, this.shipModelScale]);
+            const trans = mat4.translation(npc.pos);
+            const modelMat = new Float32Array(16);
+            mat4.mul(trans, mat4.mul(rot, scl), modelMat);
+            renderer.device.queue.writeBuffer(npc.modelBuffer, 0, modelMat);
+
+            // Apply water bump only when movement is non-trivial
+            if (step > 1e-3) {
+                this.applyShipBumpAt(npc.pos, npc.forward, dt, npc.bumpCur, npc.bumpPrev, npc.bumpDelta, 0.3);
+            }
+        }
+    }
+
+    private drawNpcShips(pass: GPURenderPassEncoder, passFlags: GPUBindGroup, sceneBG: GPUBindGroup) {
+        if (this.npcShips.length === 0) return;
+        pass.setPipeline(this.pipeline);
+        pass.setBindGroup(shaders.constants.bindGroup_scene, sceneBG);
+        pass.setBindGroup(3, passFlags);
+        this.scene.iterate(node => {
+            // override per npc bind group below
+        }, material => {
+            pass.setBindGroup(shaders.constants.bindGroup_material, material.materialBindGroup);
+        }, primitive => {
+            pass.setVertexBuffer(0, primitive.vertexBuffer);
+            pass.setIndexBuffer(primitive.indexBuffer, 'uint32');
+            for (const npc of this.npcShips) {
+                pass.setBindGroup(shaders.constants.bindGroup_model, npc.modelBindGroup);
+                pass.drawIndexed(primitive.numIndices);
+            }
+        });
     }
 
     // Fire a projectile from ship position toward a screen click; apply bump on impact with water plane.
@@ -2086,6 +2200,126 @@ export class NaiveRenderer extends renderer.Renderer {
         const v = hit[2] / (2 * this.waterScaleZ) + 0.5;
         if (u < 0 || u > 1 || v < 0 || v > 1) return null;
         return { u, v, world: vec3.fromValues(hit[0], this.fixedWaterPlaneHeight, hit[2]) };
+    }
+
+    private clampToTerrain(x: number, z: number, fallbackX: number, fallbackZ: number): [number, number] {
+        if (!this.isTerrainNavigable(x, z)) {
+            return [fallbackX, fallbackZ];
+        }
+        return [x, z];
+    }
+
+    private isTerrainNavigable(x: number, z: number): boolean {
+        const u = (x / (2 * this.waterScaleX)) + 0.5;
+        const v = (z / (2 * this.waterScaleZ)) + 0.5;
+        if (u < 0 || u > 1 || v < 0 || v > 1) return false;
+        const texX = Math.min(this.heightW - 1, Math.max(0, Math.floor(u * (this.heightW - 1))));
+        const texY = Math.min(this.heightH - 1, Math.max(0, Math.floor(v * (this.heightH - 1))));
+        const idx = texY * this.heightW + texX;
+        const terrainH = this.terrainArr[idx];
+        return terrainH <= this.navTerrainMax;
+    }
+
+    private updateFollowCamera() {
+        const shipPos = this.getShipPosition();
+        const forward = vec3.normalize(vec3.clone(this.shipForward));
+        const backDist = 1.8;
+        const height = 1.3;
+        const camPos = vec3.fromValues(
+            shipPos[0] - forward[0] * backDist,
+            shipPos[1] + height,
+            shipPos[2] - forward[2] * backDist
+        );
+        const lookPos = shipPos;
+
+        this.camera.cameraPos = camPos;
+        this.camera.cameraFront = vec3.normalize(vec3.sub(lookPos, camPos));
+        this.camera.cameraUp = vec3.fromValues(0, 1, 0);
+        this.camera.viewMat = mat4.lookAt(camPos, lookPos, this.camera.cameraUp);
+        this.camera.viewProjMat = mat4.mul(this.camera.projMat, this.camera.viewMat);
+        this.camera.invViewProjMat = mat4.inverse(this.camera.viewProjMat);
+        this.camera.uniforms.viewProjMat = this.camera.viewProjMat;
+        this.camera.uniforms.viewMat = this.camera.viewMat;
+        this.camera.uniforms.invViewMat = mat4.inverse(this.camera.viewMat);
+        renderer.device.queue.writeBuffer(this.camera.uniformsBuffer, 0, this.camera.uniforms.buffer);
+    }
+
+    private applyShipBumpAt(pos: Vec3, forward: Vec3, dt: number, cur: Float32Array, prev: Float32Array, delta: Float32Array, strengthScale = 1.0) {
+        const W = this.heightW;
+        const H = this.heightH;
+        const N = W * H;
+
+        prev.set(cur);
+        cur.fill(0);
+
+        const sx = this.waterScaleX;
+        const sz = this.waterScaleZ;
+
+        const cx = pos[0];
+        const cz = pos[2];
+
+        const forwardXZ: Vec3 = vec3.fromValues(forward[0], 0, forward[2]);
+        if (vec3.length(forwardXZ) < 1e-4) {
+            return;
+        }
+        vec3.normalize(forwardXZ, forwardXZ);
+
+        const right: Vec3 = vec3.fromValues(forwardXZ[2], 0, -forwardXZ[0]);
+
+        const L = this.shipRadius * 3.0;  
+        const baseHalfWidth = this.shipRadius * 1.0; 
+
+        const strength = 20.0 * strengthScale; 
+
+        for (let j = 0; j < H; j++) {
+            const v = j / (H - 1);
+            const worldZ = (v - 0.5) * 2 * sz;
+
+            for (let i = 0; i < W; i++) {
+                const u = i / (W - 1);
+                const worldX = (u - 0.5) * 2 * sx;
+
+                const dx = worldX - cx;
+                const dz = worldZ - cz;
+
+                const s = dx * forwardXZ[0] + dz * forwardXZ[2];
+                const t = dx * right[0]     + dz * right[2];
+
+                if (s < 0 || s > L) continue;
+
+                const halfWidthAtS = baseHalfWidth * (1.0 - s / L);
+                if (halfWidthAtS <= 0.0) continue;
+                if (Math.abs(t) > halfWidthAtS) continue;
+
+                const wAlong = 1.0 - s / L;              
+                const wSide  = 1.0 - Math.abs(t) / halfWidthAtS;
+                const w = wAlong * wSide;
+
+                if (w <= 0.0) continue;
+
+                const d = -strength * w * 1.1;
+
+                const idx = j * W + i;
+                cur[idx] += d;
+            }
+        }
+
+        let sum = 0;
+        for (let i = 0; i < N; i++) {
+            delta[i] = cur[i] - prev[i];
+            sum += delta[i];
+        }
+
+        const mean = sum / N;
+        for (let i = 0; i < N; i++) {
+            delta[i] = (delta[i] - mean) * dt;
+        }
+
+        this.updateTexture(delta, this.bumpTexture);
+
+        this.heightAddCS.run(this.heightTexture,     this.bumpTexture, W, H);
+        this.heightAddCS.run(this.lowFreqTexture,    this.bumpTexture, W, H);
+        this.heightAddCS.run(this.heightPrevTexture, this.bumpTexture, W, H);
     }
 }
 
