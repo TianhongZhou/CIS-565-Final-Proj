@@ -165,6 +165,35 @@ export class NaiveRenderer extends renderer.Renderer {
     private heightAddCS: AddOnCS;
     private bumpTexture: GPUTexture;
 
+    // Terrain surface rendering (terrain heightmap -> mesh)
+    private terrainSurfacePipeline: GPURenderPipeline;
+    private terrainSurfaceBindGroupLayout: GPUBindGroupLayout;
+    private terrainSurfaceBindGroup: GPUBindGroup;
+
+    // Fixed plane used for ship height and reflection
+    private fixedWaterPlaneHeight: number;
+
+    // Projectile rendering state
+    private projectilePipeline!: GPURenderPipeline;
+    private projectileBindGroupLayout!: GPUBindGroupLayout;
+    private projectileBindGroup!: GPUBindGroup;
+    private projectileUniformBuffer!: GPUBuffer;
+    private projectileVBO!: GPUBuffer;
+    private projectileIBO!: GPUBuffer;
+    private projectileIndexCount = 0;
+
+    private projectiles: Array<{
+        start: Vec3;
+        dir: Vec3;
+        pos: Vec3;
+        totalDist: number;
+        travelTime: number;
+        elapsed: number;
+        amp: number;
+        sigma: number;
+        uv: { u: number; v: number };
+    }> = [];
+
     private initMode: 'default' | 'terrain' | 'ship' | 'click';
 
     private terrainArr: Float32Array;
@@ -173,6 +202,8 @@ export class NaiveRenderer extends renderer.Renderer {
     private shipPos: Vec3 = vec3.fromValues(0, shaders.constants.water_base_level, 0);
     private shipRadius: number = 0.1; 
     private shipSpeed: number = 1.0;
+    private shipProjectileSpeed: number = 6.0;
+    private shipProjectileRadius: number = 0.05;
     private shipForward: Vec3 = vec3.fromValues(0, 0, 1);
     private shipModelScale: number = 0.02;
 
@@ -198,6 +229,9 @@ export class NaiveRenderer extends renderer.Renderer {
             window.addEventListener('keydown', this.shipKeyDownHandler);
             window.addEventListener('keyup', this.shipKeyUpHandler);
         }
+
+        const base = shaders.constants.water_base_level;
+        this.fixedWaterPlaneHeight = base;
 
         this.sceneUniformsBindGroupLayout = renderer.device.createBindGroupLayout({
             label: "scene uniforms bind group layout",
@@ -750,6 +784,52 @@ export class NaiveRenderer extends renderer.Renderer {
             primitive: { topology: "triangle-list"}
         });
 
+        // --- Terrain surface pipeline (renders terrainArr as a height map mesh) ---
+        this.terrainSurfaceBindGroupLayout = renderer.device.createBindGroupLayout({
+            entries: [
+                { binding: 0, visibility: GPUShaderStage.VERTEX, sampler: { type: "non-filtering" } },
+                { binding: 1, visibility: GPUShaderStage.VERTEX, texture: { sampleType: "unfilterable-float" } },
+                { binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: "uniform" } },
+            ],
+        });
+
+        this.terrainSurfaceBindGroup = renderer.device.createBindGroup({
+            layout: this.terrainSurfaceBindGroupLayout,
+            entries: [
+                { binding: 0, resource: this.heightSampler },
+                { binding: 1, resource: this.terrainTexture.createView() },
+                { binding: 2, resource: { buffer: this.heightConsts } },
+            ],
+        });
+
+        this.terrainSurfacePipeline = renderer.device.createRenderPipeline({
+            layout: renderer.device.createPipelineLayout({
+                bindGroupLayouts: [
+                    this.sceneUniformsBindGroupLayout,
+                    this.terrainSurfaceBindGroupLayout,
+                ],
+            }),
+            vertex: {
+                module: renderer.device.createShaderModule({ code: shaders.terrainVertSrc }),
+                entryPoint: "vs_main",
+                buffers: [heightVertexLayout],
+            },
+            fragment: {
+                module: renderer.device.createShaderModule({ code: shaders.terrainFragSrc }),
+                entryPoint: "fs_main",
+                targets: [{ format: renderer.canvasFormat }],
+            },
+            depthStencil: {
+                format: "depth24plus",
+                depthWriteEnabled: true,
+                depthCompare: "less",
+            },
+            primitive: { topology: "triangle-list" },
+        });
+
+        // --- Projectile pipeline (simple colored sphere) ---
+        this.createProjectileResources();
+
         // --- Diffuse step ---
         this.initRowInfoIfNeeded();
 
@@ -761,17 +841,10 @@ export class NaiveRenderer extends renderer.Renderer {
 
         const Wtex = this.heightW;
         const Htex = this.heightH;
-        const centerX = Wtex / 2;
-        const centerY = Htex / 2;
-        const bumpRadius = Math.min(Wtex, Htex) * 0.1; // Bump covers 20% of domain
-        const bumpHeight = 3.5; // Height of the bump
         
         const fluxInitX = new Float32Array(this.heightW * this.heightH);
         const fluxInitY = new Float32Array(this.heightW * this.heightH);
         
-        const highAmp = 0.5;     
-        const freq = 16.0;     
-
         this.seedHeightFields(this.initMode, terrainArr, highArr, Wtex, Htex);
 
         this.terrainArr = terrainArr;
@@ -841,20 +914,6 @@ export class NaiveRenderer extends renderer.Renderer {
             this.uYTex
         );
 
-        // this.shallowWater = new ShallowWater(
-        //     renderer.device,
-        //     this.heightW,
-        //     this.heightW,
-        //     this.lowFreqTexture,
-        //     this.lowFreqPrevHeightTexture,
-        //     this.qxLowFreqTexture,
-        //     this.qyLowFreqTexture,
-        //     this.lowFreqVelocityXTexture,
-        //     this.lowFreqVelocityYTexture,
-        //     this.changeInLowFreqVelocityXTexture,
-        //     this.changeInLowFreqVelocityYTexture
-        // );
-        
         this.shallowWater = new ShallowWater(
             renderer.device,
             this.heightW,
@@ -870,18 +929,9 @@ export class NaiveRenderer extends renderer.Renderer {
             this.terrainTexture
         );
 
-        
-        /**
-         * Smooth depth field \bar{h}(x,y).
-         * In a full implementation, this should come from the low-frequency
-         * water height minus terrain, i.e. the actual water depth.
-         */
         const smoothDepth = new Float32Array(this.heightW * this.heightH);
         for (let i = 0; i < smoothDepth.length; ++i) {
-            // Element-wise difference: water height minus terrain height
             const depth = this.lowArr[i];
-            // Clamp to a small positive value to avoid zero / negative depth,
-            // which would cause problems in the dispersion relation.
             smoothDepth[i] = Math.max(depth, 0.01);
         }
         
@@ -982,6 +1032,66 @@ export class NaiveRenderer extends renderer.Renderer {
         );
     }
 
+    private createProjectileResources() {
+        const sphere = makeSphere(16, 16);
+        this.projectileIndexCount = sphere.indices.length;
+
+        this.projectileVBO = renderer.device.createBuffer({
+            size: sphere.verts.byteLength,
+            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+        });
+        renderer.device.queue.writeBuffer(this.projectileVBO, 0, sphere.verts);
+
+        this.projectileIBO = renderer.device.createBuffer({
+            size: sphere.indices.byteLength,
+            usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
+        });
+        renderer.device.queue.writeBuffer(this.projectileIBO, 0, sphere.indices);
+
+        this.projectileUniformBuffer = renderer.device.createBuffer({
+            size: 4 * 16 + 4 * 4, // modelMat (16 floats) + color (vec3 + pad)
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        });
+
+        this.projectileBindGroupLayout = renderer.device.createBindGroupLayout({
+            entries: [
+                { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: "uniform" } },
+            ],
+        });
+
+        this.projectileBindGroup = renderer.device.createBindGroup({
+            layout: this.projectileBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: this.projectileUniformBuffer } },
+            ],
+        });
+
+        this.projectilePipeline = renderer.device.createRenderPipeline({
+            layout: renderer.device.createPipelineLayout({
+                bindGroupLayouts: [
+                    this.sceneUniformsBindGroupLayout,
+                    this.projectileBindGroupLayout,
+                ],
+            }),
+            vertex: {
+                module: renderer.device.createShaderModule({ code: shaders.projectileVertSrc }),
+                entryPoint: "vs_main",
+                buffers: [renderer.vertexBufferLayout],
+            },
+            fragment: {
+                module: renderer.device.createShaderModule({ code: shaders.projectileFragSrc }),
+                entryPoint: "fs_main",
+                targets: [{ format: renderer.canvasFormat }],
+            },
+            depthStencil: {
+                format: "depth24plus",
+                depthWriteEnabled: true,
+                depthCompare: "less",
+            },
+            primitive: { topology: "triangle-list" },
+        });
+    }
+
     private seedHeightFields(
         mode: 'default' | 'terrain' | 'ship' | 'click',
         terrainArr: Float32Array,
@@ -1073,7 +1183,7 @@ export class NaiveRenderer extends renderer.Renderer {
         }
     }
 
-    override draw() {
+    protected override draw() {
         const canvasTextureView = renderer.context.getCurrentTexture().createView();
         const encoder = renderer.device.createCommandEncoder();
 
@@ -1165,6 +1275,51 @@ export class NaiveRenderer extends renderer.Renderer {
             renderPass.setIndexBuffer(primitive.indexBuffer, 'uint32');
             renderPass.drawIndexed(primitive.numIndices);
         });
+
+        // Draw projectiles (simple spheres)
+        if (this.projectiles.length > 0) {
+            renderPass.setPipeline(this.projectilePipeline);
+            renderPass.setBindGroup(0, this.sceneUniformsBindGroup);
+            renderPass.setBindGroup(1, this.projectileBindGroup);
+            renderPass.setVertexBuffer(0, this.projectileVBO);
+            renderPass.setIndexBuffer(this.projectileIBO, "uint32");
+
+            const modelMat = new Float32Array(16);
+
+            for (const p of this.projectiles) {
+                const scl   = mat4.scaling([
+                    this.shipProjectileRadius,
+                    this.shipProjectileRadius,
+                    this.shipProjectileRadius
+                ]);
+                const trans = mat4.translation(p.pos);
+
+                mat4.mul(trans, scl, modelMat);
+
+                renderer.device.queue.writeBuffer(
+                    this.projectileUniformBuffer,
+                    0,
+                    modelMat
+                );
+
+                const color = new Float32Array([1.0, 0.8, 0.2, 0.0]);
+                renderer.device.queue.writeBuffer(
+                    this.projectileUniformBuffer,
+                    64,
+                    color
+                );
+
+                renderPass.drawIndexed(this.projectileIndexCount);
+            }
+        }
+
+        // Draw terrain height map as a displaced mesh (terrainArr).
+        renderPass.setPipeline(this.terrainSurfacePipeline);
+        renderPass.setBindGroup(0, this.sceneUniformsBindGroup);
+        renderPass.setBindGroup(1, this.terrainSurfaceBindGroup);
+        renderPass.setVertexBuffer(0, this.heightVBO);
+        renderPass.setIndexBuffer(this.heightIBO, "uint32");
+        renderPass.drawIndexed(this.heightIndexCount);
 
         // Add pipeline for height map in render pass
         renderPass.setPipeline(this.heightPipeline);
@@ -1277,9 +1432,10 @@ export class NaiveRenderer extends renderer.Renderer {
 
         if (this.initMode === 'ship' || this.initMode === 'default') {
             this.updateShipInteraction(dt);
+            this.updateProjectiles(dt);
         }
 
-        this.simulator.simulate(1.0/60.0);
+        this.simulator.simulate(1.0/240.0);
     }
 
     private updateReflectionUniforms() {
@@ -1288,7 +1444,7 @@ export class NaiveRenderer extends renderer.Renderer {
         const front = mainCam.cameraFront; 
         const up = mainCam.cameraUp;        
 
-        const h = shaders.constants.water_base_level; 
+        const h = this.fixedWaterPlaneHeight; 
 
         // Mirror the camera position and orientation across the plane y = h.
         // For a horizontal plane, reflection is:
@@ -1417,7 +1573,7 @@ export class NaiveRenderer extends renderer.Renderer {
         const denom = worldDir[1];
         if (Math.abs(denom) < 1e-4) return;
 
-        const t = (shaders.constants.water_base_level - rayOrigin[1]) / denom;
+        const t = (this.fixedWaterPlaneHeight - rayOrigin[1]) / denom;
         if (t <= 0) return;
 
         const hit = vec3.add(rayOrigin, vec3.scale(worldDir, t));
@@ -1660,6 +1816,10 @@ export class NaiveRenderer extends renderer.Renderer {
         }
     }
 
+    public getShipPosition(): Vec3 {
+        return vec3.clone(this.shipPos);
+    }
+
     // --- Ship interaction: imagined ball pressing into height field ---
     private updateShipInteraction(dt: number) {
         if (this.initMode !== 'ship' && this.initMode !== 'default') return;
@@ -1714,7 +1874,8 @@ export class NaiveRenderer extends renderer.Renderer {
         this.shipPos[0] = Math.min(this.waterScaleX,  Math.max(-this.waterScaleX,  this.shipPos[0]));
         this.shipPos[2] = Math.min(this.waterScaleZ,  Math.max(-this.waterScaleZ,  this.shipPos[2]));
 
-        this.shipPos[1] = this.getWaterHeightAtWorldPos(this.shipPos[0], this.shipPos[2]);
+        // Keep ship at a fixed water plane height (shared with reflection plane).
+        this.shipPos[1] = this.fixedWaterPlaneHeight;
 
         // Update model transform to follow imagined ship position/orientation
         const angle = Math.atan2(this.shipForward[0], this.shipForward[2]);
@@ -1833,22 +1994,98 @@ export class NaiveRenderer extends renderer.Renderer {
         this.heightAddCS.run(this.heightPrevTexture, this.bumpTexture, W, H);
     }
 
-    private getWaterHeightAtWorldPos(worldX: number, worldZ: number): number {
-        const u = (worldX / (2 * this.waterScaleX)) + 0.5;
-        const v = (worldZ / (2 * this.waterScaleZ)) + 0.5;
+    private updateProjectiles(dt: number) {
+        if (this.projectiles.length === 0) return;
 
-        if (u < 0 || u > 1 || v < 0 || v > 1) {
-            return shaders.constants.water_base_level;
+        const toRemove: number[] = [];
+        for (let i = 0; i < this.projectiles.length; i++) {
+            const p = this.projectiles[i];
+            p.elapsed += dt;
+            const traveled = Math.min(p.elapsed * this.shipProjectileSpeed, p.totalDist);
+            const step = vec3.scale(p.dir, traveled);
+            p.pos = vec3.add(p.start, step);
+
+            if (p.elapsed >= p.travelTime) {
+                this.addClickBump(p.uv.u, p.uv.v, p.amp, p.sigma);
+                toRemove.push(i);
+            }
         }
+        for (let j = toRemove.length - 1; j >= 0; j--) {
+            this.projectiles.splice(toRemove[j], 1);
+        }
+    }
 
-        const texX = Math.floor(u * (this.heightW - 1));
-        const texY = Math.floor(v * (this.heightH - 1));
-        const idx = texY * this.heightW + texX;
+    // Fire a projectile from ship position toward a screen click; apply bump on impact with water plane.
+    public fireClickProjectileToScreen(clientX: number, clientY: number, rect: DOMRect, amp = 3.0, sigma = 8.0) {
+        if (this.initMode !== 'default' && this.initMode !== 'ship') return;
 
-        const waterHeight = this.heightArr[idx];
-        const terrainHeight = this.terrainArr[idx];
+        const target = this.screenToWaterUVAndWorld(clientX, clientY, rect);
+        if (!target) return;
+        const { u, v, world } = target;
 
-        return waterHeight;
+        const shipPos = this.getShipPosition();
+        const start = vec3.fromValues(shipPos[0], this.fixedWaterPlaneHeight + 0.05, shipPos[2]);
+        const dir = vec3.sub(world, start);
+        const dist = vec3.length(dir);
+        if (dist < 1e-4) {
+            this.addClickBump(u, v, amp, sigma);
+            return;
+        }
+        const travelTime = dist / this.shipProjectileSpeed; // seconds
+        vec3.scale(dir, 1 / dist, dir);
+
+        this.projectiles.push({
+            start: vec3.clone(start),
+            dir: vec3.clone(dir),
+            pos: vec3.clone(start),
+            totalDist: dist,
+            travelTime,
+            elapsed: 0,
+            amp,
+            sigma,
+            uv: { u, v },
+        });
+    }
+
+    // Convert screen click to water-plane uv + world position on fixed plane.
+    private screenToWaterUVAndWorld(clientX: number, clientY: number, rect: DOMRect): { u: number; v: number; world: Vec3 } | null {
+        const ndcX = ((clientX - rect.left) / rect.width) * 2 - 1;
+        const ndcY = 1 - ((clientY - rect.top) / rect.height) * 2;
+
+        const invViewProj = this.camera.invViewProjMat;
+
+        const clipNear: [number, number, number, number] = [ndcX, ndcY, 0, 1];
+        const clipFar:  [number, number, number, number] = [ndcX, ndcY, 1, 1];
+
+        const worldNear4 = this.mulMat4Vec4(invViewProj, clipNear);
+        const worldFar4  = this.mulMat4Vec4(invViewProj, clipFar);
+
+        const worldNear: Vec3 = vec3.fromValues(
+            worldNear4[0] / worldNear4[3],
+            worldNear4[1] / worldNear4[3],
+            worldNear4[2] / worldNear4[3],
+        );
+        const worldFar: Vec3 = vec3.fromValues(
+            worldFar4[0] / worldFar4[3],
+            worldFar4[1] / worldFar4[3],
+            worldFar4[2] / worldFar4[3],
+        );
+
+        const worldDir = vec3.normalize(vec3.sub(worldFar, worldNear));
+        const rayOrigin: Vec3 = this.camera.cameraPos;
+
+        const denom = worldDir[1];
+        if (Math.abs(denom) < 1e-4) return null;
+
+        const t = (this.fixedWaterPlaneHeight - rayOrigin[1]) / denom;
+        if (t <= 0) return null;
+
+        const hit = vec3.add(rayOrigin, vec3.scale(worldDir, t));
+
+        const u = hit[0] / (2 * this.waterScaleX) + 0.5;
+        const v = hit[2] / (2 * this.waterScaleZ) + 0.5;
+        if (u < 0 || u > 1 || v < 0 || v > 1) return null;
+        return { u, v, world: vec3.fromValues(hit[0], this.fixedWaterPlaneHeight, hit[2]) };
     }
 }
 
@@ -1877,3 +2114,47 @@ const heightVertexLayout: GPUVertexBufferLayout = {
     arrayStride: 2*4,
     attributes: [{ shaderLocation: 0, offset: 0, format: "float32x2" }],
 };
+
+// Simple UV sphere geometry matching the default vertex layout (pos, nor, uv).
+function makeSphere(segmentsX: number, segmentsY: number) {
+    const verts: number[] = [];
+    const indices: number[] = [];
+
+    for (let y = 0; y <= segmentsY; y++) {
+        const v = y / segmentsY;
+        const theta = v * Math.PI;
+        const sinTheta = Math.sin(theta);
+        const cosTheta = Math.cos(theta);
+
+        for (let x = 0; x <= segmentsX; x++) {
+            const u = x / segmentsX;
+            const phi = u * Math.PI * 2;
+            const sinPhi = Math.sin(phi);
+            const cosPhi = Math.cos(phi);
+
+            const px = sinTheta * cosPhi;
+            const py = cosTheta;
+            const pz = sinTheta * sinPhi;
+
+            // pos
+            verts.push(px, py, pz);
+            // normal
+            verts.push(px, py, pz);
+            // uv
+            verts.push(u, 1 - v);
+        }
+    }
+
+    const stride = segmentsX + 1;
+    for (let y = 0; y < segmentsY; y++) {
+        for (let x = 0; x < segmentsX; x++) {
+            const a = y * stride + x;
+            const b = a + 1;
+            const c = a + stride;
+            const d = c + 1;
+            indices.push(a, c, b, b, c, d);
+        }
+    }
+
+    return { verts: new Float32Array(verts), indices: new Uint32Array(indices) };
+}

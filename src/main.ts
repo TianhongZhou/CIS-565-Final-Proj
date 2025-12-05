@@ -26,11 +26,11 @@ const gui = new GUI();
 
 const stage = new Stage(scene, camera, stats);
 
-await loadDefaultScene();
-
 // NaiveRenderer
 var renderer: NaiveRenderer | undefined;
 let clickListener: ((ev: PointerEvent) => void) | null = null;
+
+await loadDefaultScene();
 
 renderer?.stop();
 renderer = new NaiveRenderer(stage, 'default');
@@ -97,6 +97,14 @@ async function loadDefaultScene() {
         defaultSceneLoaded = true;
     }
     console.info('Default scene active');
+
+    const handler = (ev: PointerEvent) => {
+        if (!renderer) return;
+        const rect = canvas.getBoundingClientRect();
+        renderer.fireClickProjectileToScreen(ev.clientX, ev.clientY, rect, 0.3, 1.0);
+    };
+    canvas.addEventListener('pointerdown', handler);
+    clickListener = handler;
 }
 
 async function loadTerrainScene() {

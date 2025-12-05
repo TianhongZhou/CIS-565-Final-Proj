@@ -17,6 +17,8 @@ import flowRecombineComputeRaw from './flowRecombine.cs.wgsl?raw';
 import heightRecombineComputeRaw from './heightRecombine.cs.wgsl?raw';
 import skyboxVertRaw from './skybox.vs.wgsl?raw';
 import skyboxFragRaw from './skybox.fs.wgsl?raw';
+import projectileVertRaw from './projectile.vs.wgsl?raw';
+import projectileFragRaw from './projectile.fs.wgsl?raw';
 
 import computeInitialVelocityX from './shallowWaterShaders/computeInitialVelocityX.cs.wgsl?raw';
 import computeInitialVelocityY from './shallowWaterShaders/computeInitialVelocityY.cs.wgsl?raw';
@@ -30,6 +32,8 @@ import updateVelocityAndFluxY from './shallowWaterShaders/updateVelocityAndFluxY
 import terrainCheck from './shallowWaterShaders/terrainCheck.cs.wgsl?raw';
 
 import addOn from './addOn.cs.wgsl?raw';
+import terrainVertRaw from './terrain.vs.wgsl?raw';
+import terrainFragRaw from './terrain.fs.wgsl?raw';
 
 
 // CONSTANTS (for use in shaders)
@@ -39,7 +43,8 @@ export const constants = {
     bindGroup_material: 2,
     threadsInDiffusionBlockX: 16,
     threadsInDiffusionBlockY: 16,
-    water_base_level: 10
+    water_base_level: 10,
+    flux_damp: 0.997
 };
 
 // =================================
@@ -63,6 +68,10 @@ export const waterVertSrc: string = processShaderRaw(waterVertRaw);
 export const waterFragSrc: string = processShaderRaw(waterFragRaw);
 export const skyboxVertSrc: string = processShaderRaw(skyboxVertRaw);
 export const skyboxFragSrc: string = processShaderRaw(skyboxFragRaw);
+export const terrainVertSrc: string = processShaderRaw(terrainVertRaw);
+export const terrainFragSrc: string = processShaderRaw(terrainFragRaw);
+export const projectileVertSrc: string = processShaderRaw(projectileVertRaw);
+export const projectileFragSrc: string = processShaderRaw(projectileFragRaw);
 
 export const diffuseComputeSrc: string = processShaderRaw(diffuseComputeRaw);
 export const reconstructHeightSrc: string = processShaderRaw(reconstructHeightRaw);
