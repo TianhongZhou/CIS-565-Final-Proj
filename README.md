@@ -1,94 +1,94 @@
 # WebGPU Flowing Shallow Waves
 
+WedGPU Flowing Shallow Waves is a project created by [Qirui Fu](https://github.com/QiruiFU), [Pavel Peev](https://github.com/thesquashedman) and [Tianhong Zhou](https://github.com/TianhongZhou).
+
 ## Overview
 
-Interactive WebGPU demo that mixes shallow-water bulk flow with dispersive surface waves. The app renders a height-displaced water grid with planar reflections and an HDR environment, and exposes multiple “scene” presets to initialize the water differently.
+Real-time shallow-water demo built on WebGPU. We approximate the SIGGRAPH 2023 “Generalizing Shallow Water Simulation with Dispersive Surface Waves” idea with a split low/high-frequency solver so large waves and ripples coexist. The project runs fully in the browser, ships with multiple interactive scenes (default, terrain, ship, click), and layers gameplay-style controls (steer a boat, click to shoot waves) on top of the simulator.
 
-### What it does now
-- Real-time water simulation and rendering in WebGPU (planar reflection, Fresnel, depth attenuation).
-- Multiple height-map initializations per scene (default, terrain, ship, click) to explore different starting conditions.
-- Env map skybox and reflection rendering; water shader blends lighting with reflection.
-- Click interaction to inject localized bumps into the height map.
-- GUI (dat.gui) to switch scenes; stats.js overlay for FPS.
+![](img/demo)
+
+### Shallow Water Simulation
+
+#### Algorithm
+
+We maintain coupled low/high-frequency height and flux fields. Each frame: (1) copy previous state for recombination; (2) diffuse low/high components; (3) update velocities via shallow-water flux; (4) transport high-frequency flux/height; (5) recombine into full height/flux; (6) optional additives (ship wakes, click bumps). All steps run in compute passes on WebGPU. Height/flux use R32F textures and a regular grid; normals come from finite differences in the vertex shader.
+
+![](img/algo.png)
+
+#### Simulation examples
+
+The solver remains stable across diverse initializations: flat water, beach/islands, or user-perturbed fields. High-frequency ripples ride on top of slow-moving swells, and clicks or ship wakes propagate without blowing up. Multiple seeds shown below stay coherent over long runs without visible energy gain/loss.
+
+![](img/diff_initial_1.gif)
+
+![](img/diff_initial_2.gif)
+
+![](img/diff_initial_3.gif)
+
+![](img/diff_initial_4.gif)
+
+### Interactions
+
+#### Terrain
+
+Terrain scene supports sloped beaches and soft islands. Water follows the generated heightmap while remaining fully interactive (clicks/wakes still propagate). The sloped setup avoids vertical faces to reduce aliasing and preserve stability when waves hit shore.
+
+![](img/terrain1.gif)
+![](img/terrain2.gif)
+![](img/terrain3.gif)
+
+#### Ships
+
+Arrow keys move the imagined ship on the water plane; a follow camera can be toggled to orbit behind it. NPC boats can be spawned to circle waypoints and emit wakes. The ship model rides a fixed water plane for rendering but its wake is injected into the simulated height field.
+
+![](img/circle_control.gif)
+![](img/tri_control.gif)
+
+#### Create Waves
+
+Default/click scenes: pointer click casts a projectile toward the water plane and injects a localized bump on impact; click scene can also drop waves directly at the cursor. Amplitude/sigma are tunable and stack with ongoing simulation dynamics.
+
+![](img/create_bump.gif)
+![](img/create_wave.gif)
+
+### Rendering
+
+#### Planar Reflection
+
+Reflection pass renders the scene from a mirrored camera into an offscreen texture, then samples it in the water shader. A small Y offset on the reflection plane plus stencil-like discard in the material shader keeps underwater geometry from leaking.
+
+![](img/planar_reflect.png)
+![](img/planar_reflection.gif)
+
+#### Environment Mapping
+
+Skybox is sampled from an equirectangular HDR and bound as an environment map for both the main and reflection cameras. It provides distant lighting cues and feeds the water fresnel term with believable reflections.
+
+![](img/envmap.gif)
+
+#### Shaing
+
+Side-by-side fresnel comparison: with fresnel the water picks up angle-dependent highlights and darker grazing angles; without it the surface looks flat and plastic. Specular term uses the environment map for reflections.
+
+![](img/wo_fresnel.png)
+![](img/with_fresnel.png)
+
+### Controls / interaction
+- Scene switcher: GUI dropdown (default/terrain/ship/click).
+- Default scene: Arrow keys to move ship, `Z` to toggle follow camera, click to fire a projectile that creates a bump where it lands.
+- Click scene: click directly on water to spawn a bump/wave.
+- General: orbit/pan via the camera controls in your browser (pointer/drag as implemented by the camera class).
+
+### Next steps / ideas
+- Water rendering: foam/whitecaps and shoreline blending; SSR for non-planar content; better BRDF for fresnel/specular.
+- Simulation: spray/particle splashes coupled to wave crests; wind-driven waves; adaptive/stabler time stepping.
+- Terrain/content: procedural coastline generator; erosion masks for beaches; higher-res adaptive grid LOD.
+- Performance/UX: GPU profiling, async compute/graphics overlap; quality/perf toggles; save/load scene presets and camera paths.
 
 ### How to run
 - `npm install`
 - `npm run dev` (Vite dev server)
-- Open the served URL in a WebGPU-enabled browser (Chrome/Edge Canary with WebGPU on).
-
-### Controls / interaction
-- `WASD/QE` move camera, mouse look.
-- GUI drop-down: switch scene presets (recreates simulation state).
-- Click: inject a bump into the height map (click scene); other scenes use their own seeded patterns.
-
-### Tech highlights
-- WebGPU compute pipelines: diffusion/decomposition, shallow water bulk, transport, recombination.
-- FFT-based Airy waves pipeline (present, can be toggled in Simulator).
-- Planar reflection with a mirrored camera; HDR env map for skybox and reflection.
-- Water shader with Fresnel and depth-based attenuation.
-
-### Next steps / ideas
-- Re-enable and polish Airy waves + transport stages in the main loop.
-- Add shoreline/terrain coupling and boat–water interaction.
-- Improve water BRDF (roughness, normal reconstruction) and foam effects.
-
-## Milestone #3
-
-[Presentation](https://docs.google.com/presentation/d/1-pZEL7KyuXHIfY0tvWP7sJcYZtmUHj6yOv1_R-ZO7js/edit?slide=id.g3ac6ef2219f_0_0#slide=id.g3ac6ef2219f_0_0)
-
-### Result so far
-
-![](img/simulation.gif)
-
-![](img/envmap.gif)
-
-![](img/interaction.gif)
-
-### Progress
-
-- Simulation
-    - Debugging
-- Rendering
-    - Env map
-    - Fresnel term
-- Interaction
-    - Basic interaction with click
-
-## Milestone #2
-
-[Presentation](https://docs.google.com/presentation/d/1lJLH3f-Co_1rXHLxbPfNIJFWTP1bZ9lcO_hnZY8Z0Fk/edit?slide=id.p#slide=id.p)
-
-### Result so far
-
-![](img/m2.gif)
-
-![](img/m2.png)
-
-### Progress
-
-- Simulation (Implement the entire algorithm)
-    - Decompose step
-    - Bulk fluid flow
-    - Airy waves
-        - Rewrite GPU FFT
-    - Transport surface
-    - Compute result
-
-## Milestone #1
-
-### Presentation Link
-
-[Presentation](https://docs.google.com/presentation/d/1f0aQoDJ7CiCaOS2odb2qIY7guG_IkVA5Ko-hc2IKO7o/edit?slide=id.p#slide=id.p)
-
-### Progress
-
-- Simulation
-    - Implement Simulator class and method functions
-    - Divided simulation into 4 steps
-    - Implemented decomposition
-- Rendering
-    - Semi-transparent water rendering with alpha blending
-    - Planar reflection on the water surface using a mirrored camera
 
 ### Reference
 

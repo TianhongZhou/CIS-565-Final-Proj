@@ -582,7 +582,7 @@ export class NaiveRenderer extends renderer.Renderer {
         5 = baseLevel      (world Y offset)
         6..7 = unused (padding)
         */
-        const defaults = new Float32Array([1/256,1/256, 500,500, 10, 0, 0, 0]);
+        const defaults = new Float32Array([1/this.heightW,1/this.heightH, 500,500, 10, 0, 0, 0]);
         renderer.device.queue.writeBuffer(this.heightConsts, 0, defaults);
 
         // Bind group layout for { sampler, heightTex, heightConsts } used by the water VS.
