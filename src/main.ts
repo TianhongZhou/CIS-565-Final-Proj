@@ -8,12 +8,16 @@ import { setupLoaders, Scene } from './stage/scene';
 import { Camera } from './stage/camera';
 import { Stage } from './stage/stage';
 import { canvas } from './renderer';
+import { mat4 } from 'wgpu-matrix';
 
 await initWebGPU();
 setupLoaders();
 
 let scene = new Scene();
-// await scene.loadGltf('./scenes/sponza/Sponza.gltf');
+let terrainScene = new Scene();
+
+
+
 let defaultSceneLoaded = false;
 
 const camera = new Camera();
@@ -25,6 +29,8 @@ document.body.appendChild(stats.dom);
 const gui = new GUI();
 
 const stage = new Stage(scene, camera, stats);
+const terrainStage = new Stage(terrainScene, camera, stats);
+
 
 // NaiveRenderer
 var renderer: NaiveRenderer | undefined;
@@ -70,17 +76,23 @@ async function switchScene(sceneName: SceneName) {
 
     // Reset simulation state by recreating renderer (fresh resources)
     renderer?.stop();
-    renderer = new NaiveRenderer(stage, sceneName);
-    renderer.setHeightParams(scalex, scalez, 1);
+    
 
     switch (sceneName) {
         case 'terrain':
+            renderer = new NaiveRenderer(terrainStage, sceneName);
+            renderer.setHeightParams(scalex, scalez, 1);
             await loadTerrainScene();
+            
             break;
         case 'ship':
+            renderer = new NaiveRenderer(stage, sceneName);
+            renderer.setHeightParams(scalex, scalez, 1);
             await loadShipScene();
             break;
         case 'click':
+            renderer = new NaiveRenderer(stage, sceneName);
+            renderer.setHeightParams(scalex, scalez, 1);
             await loadClickScene();
             break;
         default:
@@ -92,10 +104,13 @@ async function switchScene(sceneName: SceneName) {
 // Below are stubs/placeholders for different scene setups.
 // Fill these to load assets, attach controls, and wire interactions.
 async function loadDefaultScene() {
+    /*
     if (!defaultSceneLoaded) {
         await scene.loadGltf('./scenes/ship/ship_pinnace_1k.gltf');
         defaultSceneLoaded = true;
     }
+        */
+    await scene.loadGltf('./scenes/ship/ship_pinnace_1k.gltf');
     console.info('Default scene active');
 
     const handler = (ev: PointerEvent) => {
@@ -111,6 +126,9 @@ async function loadTerrainScene() {
     // TODO: load terrain mesh + water interaction.
     // e.g., await scene.loadGltf('scenes/terrain/terrain.gltf');
     // Hook into renderer/simulator to enable terrain-water coupling.
+    await terrainScene.loadGltf('./scenes/IslandAttempt2/Island.gltf');
+
+    
     console.info('Terrain scene stub - implement terrain + water coupling');
 }
 

@@ -284,7 +284,7 @@ function createSampler(gltfSampler: GLTFSampler): GPUSampler {
 }
 
 export class Scene {
-    private root: Node = new Node();
+    public root: Node = new Node();
 
     constructor() {
         this.root.setName("root");
