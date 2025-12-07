@@ -216,7 +216,7 @@ export class NaiveRenderer extends renderer.Renderer {
     private terrainArr: Float32Array;
 
     // --- Ship imagined ball state ---
-    private shipPos: Vec3 = vec3.fromValues(5, shaders.constants.water_base_level, 5);
+    private shipPos: Vec3 = vec3.fromValues(3, shaders.constants.water_base_level, 3);
     private shipRadius: number = 0.1; 
     private shipSpeed: number = 1.0;
     private shipProjectileSpeed: number = 6.0;
@@ -249,7 +249,7 @@ export class NaiveRenderer extends renderer.Renderer {
         }
 
         const base = shaders.constants.water_base_level;
-        this.fixedWaterPlaneHeight = base + 0.2;
+        this.fixedWaterPlaneHeight = base;
 
         this.sceneUniformsBindGroupLayout = renderer.device.createBindGroupLayout({
             label: "scene uniforms bind group layout",
@@ -1128,6 +1128,8 @@ export class NaiveRenderer extends renderer.Renderer {
         const bumpHeight = 3.5;
         const highAmp = 0.5;
         const freq = 16.0;
+        // Keep terrain for default/click; only ship scene stays flat.
+        const flattenTerrain = mode === 'ship';
 
         for (let y = 0; y < Htex; y++) {
             for (let x = 0; x < Wtex; x++) {
@@ -1169,39 +1171,49 @@ export class NaiveRenderer extends renderer.Renderer {
                 highArr[idx] = high;
                 this.heightArr[idx] = baseWater;
 
-                terrainArr[idx] = baseWater - 0.05;
-                //Change terrain height near borders to create "walls"
-                let borderMargin = 100;
-                
-                if (x < borderMargin || x > Wtex - borderMargin || y < borderMargin || y > Htex - borderMargin) {
-                    terrainArr[idx] = baseWater + 0.0;
-                    this.heightArr[idx] = baseWater + 0.35;
+                // For ship/click scenes, terrain stays completely flat (all zeros).
+                if (flattenTerrain) {
+                    terrainArr[idx] = 0.0;
+                    continue;
                 }
-                else{
-                    //Make the terrain form a bump in the center
-                    const dx = x - centerX;
-                    const dy = y - centerY;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
-                    let waterBumpHeight = 0.25;
-                    if (dist < bumpRadius) {
-                        const bump = waterBumpHeight * Math.cos((dist / (bumpRadius * 0.5)) * (Math.PI / 2));
-                        terrainArr[idx] = baseWater - 0.05 - bump;
-                        this.heightArr[idx] = baseWater - bump;
-                    }
-                   //this.heightArr[idx] = baseWater - waterBumpHeight;
-                }
-                
-               /*
-               if (y < borderMargin || y > Htex - borderMargin) {
-                    terrainArr[idx] = baseWater + 0.01;
-                    this.heightArr[idx] = baseWater + 0.0;
-                }
-                if(y < borderMargin - 5 || y > Htex - borderMargin + 5) {
-                    terrainArr[idx] = baseWater - 0.10;
-                    this.heightArr[idx] = baseWater - 0.05;
-                }
-                    */
 
+                const baseTerrain = baseWater - 0.08;
+                const baseWaterHeight = baseWater;
+
+                // Beach gradients along left and top edges (smooth ramp up).
+                const beachWidth = Math.min(Wtex, Htex) * 0.25;
+                const beachHeight = 0.25;
+                const leftFactor = Math.max(0, 1 - x / beachWidth);
+                const topFactor = Math.max(0, 1 - y / beachWidth);
+                const beachFactor = Math.max(leftFactor, topFactor);
+
+                let terrainH = baseTerrain + beachHeight * beachFactor;
+                let waterH   = baseWaterHeight;
+
+                // Gentle undulation across the beach so it isn't perfectly flat.
+                if (beachFactor > 0.0) {
+                    const waviness =
+                        0.05 * beachFactor *
+                        (Math.sin(u * 2.0 * Math.PI * 4.0) + Math.cos(v * 2.0 * Math.PI * 3.0)) * 0.5;
+                    terrainH += waviness;
+                }
+
+                // Islands: soft bumps in the middle.
+                const islands = [
+                    { cx: 0.42, cy: 0.45, amp: 0.45, sigma: 0.05 },
+                    { cx: 0.58, cy: 0.55, amp: 0.35, sigma: 0.04 },
+                    { cx: 0.50, cy: 0.38, amp: 0.30, sigma: 0.035 },
+                ];
+                for (const island of islands) {
+                    const dx = u - island.cx;
+                    const dy = v - island.cy;
+                    const dist2 = dx * dx + dy * dy;
+                    const bump = island.amp * Math.exp(-dist2 / (2 * island.sigma * island.sigma));
+                    terrainH += bump;
+                }
+
+                terrainArr[idx] = terrainH;
+                this.heightArr[idx] = waterH;
             }
         }
     }
@@ -1238,25 +1250,27 @@ export class NaiveRenderer extends renderer.Renderer {
         reflectionPass.setBindGroup(1, this.envBindGroup);
         reflectionPass.draw(3);
 
-        // Draw glTF scene into reflection target
-        reflectionPass.setPipeline(this.pipeline);
-        reflectionPass.setBindGroup(shaders.constants.bindGroup_scene, this.reflectionSceneUniformsBindGroup);
-        // Tell the material shader "this is the reflection pass"
-        // so it can discard fragments below the water plane.
-        reflectionPass.setBindGroup(3, this.passFlagsBindGroupReflection);
+        if (this.initMode !== 'click') {
+            // Draw glTF scene into reflection target
+            reflectionPass.setPipeline(this.pipeline);
+            reflectionPass.setBindGroup(shaders.constants.bindGroup_scene, this.reflectionSceneUniformsBindGroup);
+            // Tell the material shader "this is the reflection pass"
+            // so it can discard fragments below the water plane.
+            reflectionPass.setBindGroup(3, this.passFlagsBindGroupReflection);
 
-        // Draw the glTF scene from the mirrored camera
-        this.scene.iterate(node => {
-            reflectionPass.setBindGroup(shaders.constants.bindGroup_model, node.modelBindGroup);
-        }, material => {
-            reflectionPass.setBindGroup(shaders.constants.bindGroup_material, material.materialBindGroup);
-        }, primitive => {
-            reflectionPass.setVertexBuffer(0, primitive.vertexBuffer);
-            reflectionPass.setIndexBuffer(primitive.indexBuffer, 'uint32');
-            reflectionPass.drawIndexed(primitive.numIndices);
-        });
-        // Draw NPC ships in reflection
-        this.drawNpcShips(reflectionPass, this.passFlagsBindGroupReflection, this.reflectionSceneUniformsBindGroup);
+            // Draw the glTF scene from the mirrored camera
+            this.scene.iterate(node => {
+                reflectionPass.setBindGroup(shaders.constants.bindGroup_model, node.modelBindGroup);
+            }, material => {
+                reflectionPass.setBindGroup(shaders.constants.bindGroup_material, material.materialBindGroup);
+            }, primitive => {
+                reflectionPass.setVertexBuffer(0, primitive.vertexBuffer);
+                reflectionPass.setIndexBuffer(primitive.indexBuffer, 'uint32');
+                reflectionPass.drawIndexed(primitive.numIndices);
+            });
+            // Draw NPC ships in reflection
+            this.drawNpcShips(reflectionPass, this.passFlagsBindGroupReflection, this.reflectionSceneUniformsBindGroup);
+        }
 
         reflectionPass.end();
 
@@ -1285,23 +1299,25 @@ export class NaiveRenderer extends renderer.Renderer {
         renderPass.setBindGroup(1, this.envBindGroup);
         renderPass.draw(3);
 
-        // Draw glTF scene
-        renderPass.setPipeline(this.pipeline);
-        renderPass.setBindGroup(shaders.constants.bindGroup_scene, this.sceneUniformsBindGroup);
-        // Tell the material shader "this is the main pass"
-        renderPass.setBindGroup(3, this.passFlagsBindGroupMain);
+        if (this.initMode !== 'click') {
+            // Draw glTF scene
+            renderPass.setPipeline(this.pipeline);
+            renderPass.setBindGroup(shaders.constants.bindGroup_scene, this.sceneUniformsBindGroup);
+            // Tell the material shader "this is the main pass"
+            renderPass.setBindGroup(3, this.passFlagsBindGroupMain);
 
-        this.scene.iterate(node => {
-            renderPass.setBindGroup(shaders.constants.bindGroup_model, node.modelBindGroup);
-        }, material => {
-            renderPass.setBindGroup(shaders.constants.bindGroup_material, material.materialBindGroup);
-        }, primitive => {
-            renderPass.setVertexBuffer(0, primitive.vertexBuffer);
-            renderPass.setIndexBuffer(primitive.indexBuffer, 'uint32');
-            renderPass.drawIndexed(primitive.numIndices);
-        });
-        // Draw NPC ships in main pass
-        this.drawNpcShips(renderPass, this.passFlagsBindGroupMain, this.sceneUniformsBindGroup);
+            this.scene.iterate(node => {
+                renderPass.setBindGroup(shaders.constants.bindGroup_model, node.modelBindGroup);
+            }, material => {
+                renderPass.setBindGroup(shaders.constants.bindGroup_material, material.materialBindGroup);
+            }, primitive => {
+                renderPass.setVertexBuffer(0, primitive.vertexBuffer);
+                renderPass.setIndexBuffer(primitive.indexBuffer, 'uint32');
+                renderPass.drawIndexed(primitive.numIndices);
+            });
+            // Draw NPC ships in main pass
+            this.drawNpcShips(renderPass, this.passFlagsBindGroupMain, this.sceneUniformsBindGroup);
+        }
 
         // Draw projectiles (simple spheres)
         if (this.projectiles.length > 0) {
@@ -1576,44 +1592,64 @@ export class NaiveRenderer extends renderer.Renderer {
         this.heightAddCS.run(this.heightPrevTexture, this.bumpTexture, this.heightW, this.heightH);
     }
 
+    // Sinusoidal wave injection for click scene (flat plane wave with Gaussian envelope).
+    private addClickWave(u: number, v: number, amplitude = 1.2, wavelength = 6.0, envelopeRadius = 1.0) {
+        const W = this.heightW;
+        const H = this.heightH;
+        const waveArr = new Float32Array(W * H);
+
+        // Convert center from uv to world space on the water plane.
+        const centerX = (u - 0.5) * 2 * this.waterScaleX;
+        const centerZ = (v - 0.5) * 2 * this.waterScaleZ;
+
+        const k = (2 * Math.PI) / Math.max(1e-4, wavelength);
+        const spreadZ2 = Math.max(1e-4, envelopeRadius * envelopeRadius);
+        // Make the crest span almost the full width in X so it feels like a wall of water.
+        const spreadX2 = Math.max(1e-4, Math.pow(this.waterScaleX * 0.95, 2));
+
+        for (let y = 0; y < H; y++) {
+            const vy = y / (H - 1);
+            const worldZ = (vy - 0.5) * 2 * this.waterScaleZ;
+            for (let x = 0; x < W; x++) {
+                const vx = x / (W - 1);
+                const worldX = (vx - 0.5) * 2 * this.waterScaleX;
+
+                const dx = worldX - centerX;
+                const dz = worldZ - centerZ;
+
+                // Wide envelope in X, tight in Z to form a horizontal wall moving along +Z.
+                const envelopeX = Math.exp(-(dx * dx) / (2 * spreadX2));
+                const envelopeZ = Math.exp(-(dz * dz) / (2 * spreadZ2));
+                const envelope = envelopeX * envelopeZ;
+
+                // Plane wave traveling along +Z with localized depth envelope.
+                // Only positive displacement (crest), no trough.
+                const crest = Math.max(0, Math.sin(k * dz));
+                const wave = amplitude * crest * envelope;
+
+                waveArr[y * W + x] = wave;
+            }
+        }
+
+        this.updateTexture(waveArr, this.bumpTexture);
+        
+        this.heightAddCS.run(this.heightTexture, this.bumpTexture, this.heightW, this.heightH);
+        this.heightAddCS.run(this.lowFreqTexture, this.bumpTexture, this.heightW, this.heightH);
+        this.heightAddCS.run(this.heightPrevTexture, this.bumpTexture, this.heightW, this.heightH);
+    }
+
     // Adds bump based on screen coordinates (clientX/Y) -> water plane intersection
     public addClickBumpFromScreen(clientX: number, clientY: number, rect: DOMRect, amp = 3.0, sigma = 8.0) {
-        const ndcX = ((clientX - rect.left) / rect.width) * 2 - 1;
-        const ndcY = 1 - ((clientY - rect.top) / rect.height) * 2;
+        const target = this.screenToWaterUVAndWorld(clientX, clientY, rect);
+        if (!target) return;
+        const { u, v } = target;
 
-        const invViewProj = this.camera.invViewProjMat;
+        // if (this.initMode === 'click') {
+        //     // Click scene: disable Gaussian bump and inject a localized sinusoidal wave instead.
+        //     this.addClickWave(u, v, Math.max(amp, 1.2), 6.0, Math.max(0.6, sigma * 0.05));
+        //     return;
+        // }
 
-        const clipNear: [number, number, number, number] = [ndcX, ndcY, 0, 1];
-        const clipFar:  [number, number, number, number] = [ndcX, ndcY, 1, 1];
-
-        const worldNear4 = this.mulMat4Vec4(invViewProj, clipNear);
-        const worldFar4  = this.mulMat4Vec4(invViewProj, clipFar);
-
-        const worldNear: Vec3 = vec3.fromValues(
-            worldNear4[0] / worldNear4[3],
-            worldNear4[1] / worldNear4[3],
-            worldNear4[2] / worldNear4[3],
-        );
-        const worldFar: Vec3 = vec3.fromValues(
-            worldFar4[0] / worldFar4[3],
-            worldFar4[1] / worldFar4[3],
-            worldFar4[2] / worldFar4[3],
-        );
-
-        const worldDir = vec3.normalize(vec3.sub(worldFar, worldNear));
-        const rayOrigin: Vec3 = this.camera.cameraPos;
-
-        const denom = worldDir[1];
-        if (Math.abs(denom) < 1e-4) return;
-
-        const t = (this.fixedWaterPlaneHeight - rayOrigin[1]) / denom;
-        if (t <= 0) return;
-
-        const hit = vec3.add(rayOrigin, vec3.scale(worldDir, t));
-
-        const u = hit[0] / (2 * this.waterScaleX) + 0.5;
-        const v = hit[2] / (2 * this.waterScaleZ) + 0.5;
-        if (u < 0 || u > 1 || v < 0 || v > 1) return;
         this.addClickBump(u, v, amp, sigma);
     }
 
@@ -2012,7 +2048,7 @@ export class NaiveRenderer extends renderer.Renderer {
     }
 
     private initNpcShips() {
-        const count = 5;
+        const count = 0;
         const radiusMin = this.waterScaleX * 0.2;
         const radiusMax = this.waterScaleX * 0.8;
         const N = this.heightW * this.heightH;

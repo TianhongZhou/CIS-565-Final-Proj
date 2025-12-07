@@ -44,7 +44,7 @@ export const constants = {
     threadsInDiffusionBlockX: 16,
     threadsInDiffusionBlockY: 16,
     water_base_level: 10,
-    flux_damp: 0.997
+    flux_damp: 0.995
 };
 
 // =================================

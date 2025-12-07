@@ -127,7 +127,7 @@ async function loadClickScene() {
         if (!renderer) return;
         const rect = canvas.getBoundingClientRect();
         // renderer.resetWaterFlat();
-        renderer.addClickBumpFromScreen(ev.clientX, ev.clientY, rect, 4.0, 8.0);
+        renderer.addClickBumpFromScreen(ev.clientX, ev.clientY, rect, 2.0, 4.0);
     };
     canvas.addEventListener('pointerdown', handler);
     clickListener = handler;
