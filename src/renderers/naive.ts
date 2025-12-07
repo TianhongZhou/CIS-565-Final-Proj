@@ -37,6 +37,9 @@ export class NaiveRenderer extends renderer.Renderer {
     lowFreqTexturePingpong: GPUTexture;
     highFreqTexture: GPUTexture;
     private highFreqPrevTexture: GPUTexture;
+    terrainOffsetTexture: GPUTexture;
+
+
     // non-filtering sampler
     heightSampler: GPUSampler;
     // UBO for HeightConsts (uvTexel, worldScale, heightScale, baseLevel)
@@ -406,7 +409,8 @@ export class NaiveRenderer extends renderer.Renderer {
             GPUTextureUsage.TEXTURE_BINDING |
             GPUTextureUsage.COPY_DST |
             GPUTextureUsage.COPY_SRC |
-            GPUTextureUsage.STORAGE_BINDING;
+            GPUTextureUsage.STORAGE_BINDING
+            | GPUTextureUsage.RENDER_ATTACHMENT;
 
         // R32Float height texture (unfilterable). One float per texel.
         this.heightTexture = renderer.device.createTexture({
@@ -457,6 +461,13 @@ export class NaiveRenderer extends renderer.Renderer {
             format: "r32float",
             usage: texUsage,
         });
+        this.terrainOffsetTexture = renderer.device.createTexture({
+            size: [this.heightW, this.heightH],
+            format: "r32float",
+            usage: texUsage,
+        });
+
+
 
         // flux x
         this.qxTexture = renderer.device.createTexture({
@@ -888,6 +899,14 @@ export class NaiveRenderer extends renderer.Renderer {
         this.updateTexture(fluxInitX, this.uXTex);
         this.updateTexture(fluxInitY, this.uYTex);
 
+        this.updateTexture(terrainArr, this.terrainOffsetTexture);
+
+        if(this.initMode === 'terrain') {
+            //Replace terrainTexture with one loaded from the url
+            let terrainUrl = new URL("../../scenes/terrainTexture/terrainTexture.png", import.meta.url).href;
+            this.loadHeightmapTexture(renderer.device, terrainUrl, this.terrainTexture);
+        }
+
         this.diffuseHeight = new DiffuseCS(
             renderer.device,
             this.heightW,
@@ -1212,10 +1231,16 @@ export class NaiveRenderer extends renderer.Renderer {
                     terrainH += bump;
                 }
 
+                // Central bump (for ship 
+
                 terrainArr[idx] = terrainH;
                 this.heightArr[idx] = waterH;
+                if(mode === 'terrain'){
+                    terrainArr[idx] = baseWaterHeight - 0.1;
+                }
             }
         }
+       
     }
 
     protected override draw() {
@@ -1712,7 +1737,28 @@ export class NaiveRenderer extends renderer.Renderer {
             console.warn("Failed to load HDR env map:", err);
         }
     }
+    private async loadHeightmapTexture(
+        device: GPUDevice,
+        url: string,
+        texture: GPUTexture
+    ): Promise<GPUTexture> {
+        const response = await fetch(url);
+        const blob = await response.blob();
+        const imageBitmap = await createImageBitmap(blob);
 
+
+        device.queue.copyExternalImageToTexture(
+            { source: imageBitmap },
+            { texture: texture },
+            {
+                width: imageBitmap.width,
+                height: imageBitmap.height,
+                depthOrArrayLayers: 1
+            }
+        );
+
+        return texture;
+    }
     private async loadHDR(url: string): Promise<{ width: number; height: number; data: Float32Array }> {
         const response = await fetch(url);
         if (!response.ok) {
