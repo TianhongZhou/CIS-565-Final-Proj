@@ -104,14 +104,13 @@ async function switchScene(sceneName: SceneName) {
 // Below are stubs/placeholders for different scene setups.
 // Fill these to load assets, attach controls, and wire interactions.
 async function loadDefaultScene() {
-    /*
+    // Default 场景加载静态岛 + 可动船模型；岛保持静态，船由 renderer 控制。
     if (!defaultSceneLoaded) {
+        await scene.loadGltf('./scenes/IslandAttempt2/Island.gltf');
         await scene.loadGltf('./scenes/ship/ship_pinnace_1k.gltf');
         defaultSceneLoaded = true;
     }
-        */
-    await scene.loadGltf('./scenes/ship/ship_pinnace_1k.gltf');
-    console.info('Default scene active');
+    console.info('Default terrain scene active');
 
     const handler = (ev: PointerEvent) => {
         if (!renderer) return;

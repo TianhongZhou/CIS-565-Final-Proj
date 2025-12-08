@@ -2,11 +2,15 @@
 
 WedGPU Flowing Shallow Waves is a project created by [Qirui Fu](https://github.com/QiruiFU), [Pavel Peev](https://github.com/thesquashedman) and [Tianhong Zhou](https://github.com/TianhongZhou).
 
+All presentation slides are under the folder docs (the slides for final presentation is 300mb, unable to push. Chnaged to pdf).
+
+![](img/cover.png)
+
 ## Overview
 
 Real-time shallow-water demo built on WebGPU. We approximate the SIGGRAPH 2023 “Generalizing Shallow Water Simulation with Dispersive Surface Waves” idea with a split low/high-frequency solver so large waves and ripples coexist. The project runs fully in the browser, ships with multiple interactive scenes (default, terrain, ship, click), and layers gameplay-style controls (steer a boat, click to shoot waves) on top of the simulator.
 
-![](img/demo)
+![](img/demo.gif)
 
 ### Shallow Water Simulation
 

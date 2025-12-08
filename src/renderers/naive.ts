@@ -104,7 +104,8 @@ export class NaiveRenderer extends renderer.Renderer {
     // Cached water extents for screen->world mapping
     private waterScaleX = 10;
     private waterScaleZ = 10;
-    private navTerrainMax = shaders.constants.water_base_level + 0.02;
+    private navTerrainMax = shaders.constants.water_base_level - 0.1;
+    private npcNoGoRadius = 5.0;
     private initialized = false;
 
     // Diffuse compute
@@ -902,7 +903,7 @@ export class NaiveRenderer extends renderer.Renderer {
 
         this.updateTexture(terrainArr, this.terrainOffsetTexture);
 
-        if(this.initMode === 'terrain') {
+        if(this.initMode === 'terrain' || this.initMode === 'default') {
             //Replace terrainTexture with one loaded from the url
             let terrainUrl = new URL("../../scenes/terrainTexture/terrainTexture.png", import.meta.url).href;
             this.loadHeightmapTexture(renderer.device, terrainUrl, this.terrainTexture).then(() => {
@@ -1168,29 +1169,15 @@ export class NaiveRenderer extends renderer.Renderer {
                 let baseWater = shaders.constants.water_base_level;
                 let high = 0.0;
 
+                // All scenes start from the same flat water; terrain/default later get the heightmap.
                 switch (mode) {
-                    case 'terrain': {
+                    case 'terrain':
+                    case 'ship':
+                    case 'click':
+                    default:
                         baseWater += 0.0;
                         high = 0.0;
                         break;
-                    }
-                    case 'ship': {
-                        baseWater += 0.0;
-                        high = 0.0;
-                        break;
-                    }
-                    case 'click': {
-                        // flat water for click interactions
-                        baseWater += 0.0;
-                        high = 0.0;
-                        break;
-                    }
-                    default: {
-                        // flat like ship
-                        baseWater += 0.0;
-                        high = 0.0;
-                        break;
-                    }
                 }
 
                 this.lowArr[idx] = baseWater;
@@ -1242,7 +1229,7 @@ export class NaiveRenderer extends renderer.Renderer {
 
                 terrainArr[idx] = terrainH;
                 this.heightArr[idx] = waterH;
-                if(mode === 'terrain'){
+                if(mode === 'terrain' || mode === 'default'){
                     terrainArr[idx] = baseWaterHeight - 0.1;
                 }
             }
@@ -2052,6 +2039,10 @@ export class NaiveRenderer extends renderer.Renderer {
         // Apply to all mesh nodes (simple assumption: single ship model loaded)
         this.scene.iterate(
             (node) => {
+                // Only move ship meshes; leave static scenery (e.g., island terrain) untouched.
+                const name = typeof node.name === 'string' ? node.name.toLowerCase() : '';
+                const isShip = name.includes('ship');
+                if (!isShip) return;
                 if (node.mesh && node.modelMatUniformBuffer) {
                     renderer.device.queue.writeBuffer(
                         node.modelMatUniformBuffer,
@@ -2103,7 +2094,7 @@ export class NaiveRenderer extends renderer.Renderer {
     }
 
     private initNpcShips() {
-        const count = 0;
+        const count = 5;
         const radiusMin = this.waterScaleX * 0.2;
         const radiusMax = this.waterScaleX * 0.8;
         const N = this.heightW * this.heightH;
@@ -2113,10 +2104,20 @@ export class NaiveRenderer extends renderer.Renderer {
     }
 
     private createNpcShip(idx: number, count: number, radiusMin: number, radiusMax: number, N: number) {
-        const theta = (idx / count) * Math.PI * 2;
-        const r = radiusMin + Math.random() * (radiusMax - radiusMin);
-        const pos = vec3.fromValues(Math.cos(theta) * r, this.fixedWaterPlaneHeight, Math.sin(theta) * r);
-        const forward = vec3.normalize(vec3.fromValues(-Math.sin(theta), 0, Math.cos(theta)));
+        // Pick an initial position that is navigable (below navTerrainMax and outside no-go circle).
+        let pos = vec3.fromValues(0, this.fixedWaterPlaneHeight, 0);
+        const maxTries = 32;
+        for (let i = 0; i < maxTries; i++) {
+            const theta = (idx / count) * Math.PI * 2 + Math.random() * 0.5; // small jitter
+            const r = radiusMin + Math.random() * (radiusMax - radiusMin);
+            const candX = Math.cos(theta) * r;
+            const candZ = Math.sin(theta) * r;
+            if (this.isNpcNavigable(candX, candZ)) {
+                pos = vec3.fromValues(candX, this.fixedWaterPlaneHeight, candZ);
+                break;
+            }
+        }
+        const forward = vec3.normalize(vec3.fromValues(-Math.sin(pos[0]), 0, Math.cos(pos[2])));
         const waypoints: Vec3[] = [];
         const waypointCount = 5 + Math.floor(Math.random() * 3);
         for (let w = 0; w < waypointCount; w++) {
@@ -2124,7 +2125,7 @@ export class NaiveRenderer extends renderer.Renderer {
             const rad = radiusMin + Math.random() * (radiusMax - radiusMin);
             const wx = Math.cos(ang) * rad;
             const wz = Math.sin(ang) * rad;
-            const clamped = this.clampToTerrain(wx, wz, pos[0], pos[2]);
+            const clamped = this.clampToNpcNavigable(wx, wz, pos[0], pos[2]);
             waypoints.push(vec3.fromValues(clamped[0], this.fixedWaterPlaneHeight, clamped[1]));
         }
         waypoints.push(vec3.clone(pos)); // loop back near start
@@ -2175,7 +2176,7 @@ export class NaiveRenderer extends renderer.Renderer {
             vec3.scale(dir, step, dir);
             const nextX = npc.pos[0] + dir[0];
             const nextZ = npc.pos[2] + dir[2];
-            if (!this.isTerrainNavigable(nextX, nextZ)) {
+            if (!this.isNpcNavigable(nextX, nextZ)) {
                 // If blocked, reset waypoints from current position.
                 npc.waypoints = this.createNpcShip(0, 1, this.waterScaleX * 0.2, this.waterScaleX * 0.8, this.heightW * this.heightH).waypoints;
                 npc.waypointIndex = 0;
@@ -2196,7 +2197,7 @@ export class NaiveRenderer extends renderer.Renderer {
 
             // Apply water bump only when movement is non-trivial
             if (step > 1e-3) {
-                this.applyShipBumpAt(npc.pos, npc.forward, dt, npc.bumpCur, npc.bumpPrev, npc.bumpDelta, 0.3);
+                this.applyShipBumpAt(npc.pos, npc.forward, dt, npc.bumpCur, npc.bumpPrev, npc.bumpDelta, 0.5);
             }
         }
     }
@@ -2206,18 +2207,26 @@ export class NaiveRenderer extends renderer.Renderer {
         pass.setPipeline(this.pipeline);
         pass.setBindGroup(shaders.constants.bindGroup_scene, sceneBG);
         pass.setBindGroup(3, passFlags);
-        this.scene.iterate(node => {
-            // override per npc bind group below
-        }, material => {
-            pass.setBindGroup(shaders.constants.bindGroup_material, material.materialBindGroup);
-        }, primitive => {
-            pass.setVertexBuffer(0, primitive.vertexBuffer);
-            pass.setIndexBuffer(primitive.indexBuffer, 'uint32');
-            for (const npc of this.npcShips) {
-                pass.setBindGroup(shaders.constants.bindGroup_model, npc.modelBindGroup);
-                pass.drawIndexed(primitive.numIndices);
+        // Traverse scene and draw only ship meshes per NPC; skip static island/other meshes.
+        const stack = [this.scene.root];
+        while (stack.length > 0) {
+            const node = stack.pop()!;
+            const name = typeof node.name === 'string' ? node.name.toLowerCase() : '';
+            if (node.mesh && name.includes('ship')) {
+                for (const primitive of node.mesh.primitives) {
+                    pass.setBindGroup(shaders.constants.bindGroup_material, primitive.material.materialBindGroup);
+                    pass.setVertexBuffer(0, primitive.vertexBuffer);
+                    pass.setIndexBuffer(primitive.indexBuffer, 'uint32');
+                    for (const npc of this.npcShips) {
+                        pass.setBindGroup(shaders.constants.bindGroup_model, npc.modelBindGroup);
+                        pass.drawIndexed(primitive.numIndices);
+                    }
+                }
             }
-        });
+            for (const child of node.children) {
+                stack.push(child);
+            }
+        }
     }
 
     // Fire a projectile from ship position toward a screen click; apply bump on impact with water plane.
@@ -2300,6 +2309,13 @@ export class NaiveRenderer extends renderer.Renderer {
         return [x, z];
     }
 
+    private clampToNpcNavigable(x: number, z: number, fallbackX: number, fallbackZ: number): [number, number] {
+        if (!this.isNpcNavigable(x, z)) {
+            return [fallbackX, fallbackZ];
+        }
+        return [x, z];
+    }
+
     private isTerrainNavigable(x: number, z: number): boolean {
         const u = (x / (2 * this.waterScaleX)) + 0.5;
         const v = (z / (2 * this.waterScaleZ)) + 0.5;
@@ -2309,6 +2325,13 @@ export class NaiveRenderer extends renderer.Renderer {
         const idx = texY * this.heightW + texX;
         const terrainH = this.terrainArr[idx];
         return terrainH <= this.navTerrainMax;
+    }
+
+    // NPC 专用导航：地形可通行且距离原点超出禁入半径。
+    private isNpcNavigable(x: number, z: number): boolean {
+        const dist2 = x * x + z * z;
+        if (dist2 < this.npcNoGoRadius * this.npcNoGoRadius) return false;
+        return this.isTerrainNavigable(x, z);
     }
 
     private updateFollowCamera() {

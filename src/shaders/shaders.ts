@@ -44,8 +44,8 @@ export const constants = {
     bindGroup_material: 2,
     threadsInDiffusionBlockX: 16,
     threadsInDiffusionBlockY: 16,
-    water_base_level: 500,
-    flux_damp: 0.995
+    water_base_level: 10,
+    flux_damp: 0.994
 };
 
 // =================================
