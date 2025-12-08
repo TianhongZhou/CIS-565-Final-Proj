@@ -1389,12 +1389,14 @@ export class NaiveRenderer extends renderer.Renderer {
         }
 
         // Draw terrain height map as a displaced mesh (terrainArr).
-        renderPass.setPipeline(this.terrainSurfacePipeline);
-        renderPass.setBindGroup(0, this.sceneUniformsBindGroup);
-        renderPass.setBindGroup(1, this.terrainSurfaceBindGroup);
-        renderPass.setVertexBuffer(0, this.heightVBO);
-        renderPass.setIndexBuffer(this.heightIBO, "uint32");
-        renderPass.drawIndexed(this.heightIndexCount);
+        if( this.initMode !== 'terrain') {
+            renderPass.setPipeline(this.terrainSurfacePipeline);
+            renderPass.setBindGroup(0, this.sceneUniformsBindGroup);
+            renderPass.setBindGroup(1, this.terrainSurfaceBindGroup);
+            renderPass.setVertexBuffer(0, this.heightVBO);
+            renderPass.setIndexBuffer(this.heightIBO, "uint32");
+            renderPass.drawIndexed(this.heightIndexCount);
+        }
 
         // Add pipeline for height map in render pass
         renderPass.setPipeline(this.heightPipeline);

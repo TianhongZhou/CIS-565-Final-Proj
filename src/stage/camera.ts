@@ -1,6 +1,7 @@
 import { Mat4, mat4, Vec3, vec3 } from "wgpu-matrix";
 import { toRadians } from "../math_util";
 import { device, canvas, fovYDegrees, aspectRatio } from "../renderer";
+import * as shaders from "../shaders/shaders";
 
 export class CameraUniforms {
     readonly buffer = new ArrayBuffer(272);
@@ -48,7 +49,7 @@ export class Camera {
     viewProjMat: Mat4 = mat4.create();
     invViewProjMat: Mat4 = mat4.create();
 
-    cameraPos: Vec3 = vec3.create(-7, 12, 0);
+    cameraPos: Vec3 = vec3.create(-7, shaders.constants.water_base_level + 2, 0);
     cameraFront: Vec3 = vec3.create(0, 0, -1);
     cameraUp: Vec3 = vec3.create(0, 1, 0);
     cameraRight: Vec3 = vec3.create(1, 0, 0);

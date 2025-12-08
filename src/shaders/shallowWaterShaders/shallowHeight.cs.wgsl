@@ -99,6 +99,12 @@ fn shallowHeight(@builtin(global_invocation_id) globalIdx: vec3u) {
     //Clamp height to be non-negative
     newHeight = max(newHeight, H_EPS);
 
+    //Diffuse height towards base level
+    let baseLevel: f32 = f32(${water_base_level});
+    changeInHeight = (baseLevel - newHeight) * 0.1;
+    newHeight += changeInHeight * timeStep;
+
+
     textureStore(heightOut, vec2i(ix, iy), vec4f(newHeight, 0, 0, 0));
 
 }
