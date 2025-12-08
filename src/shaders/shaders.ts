@@ -32,6 +32,7 @@ import updateVelocityAndFluxY from './shallowWaterShaders/updateVelocityAndFluxY
 import terrainCheck from './shallowWaterShaders/terrainCheck.cs.wgsl?raw';
 
 import addOn from './addOn.cs.wgsl?raw';
+import scaleTex from './scaleTex.cs.wgsl?raw';
 import terrainVertRaw from './terrain.vs.wgsl?raw';
 import terrainFragRaw from './terrain.fs.wgsl?raw';
 
@@ -93,3 +94,4 @@ export const updateVelocityAndFluxYSrc: string = processShaderRaw(updateVelocity
 export const terrainCheckSrc: string = processShaderRaw(terrainCheck);
 
 export const addOnSrc: string = processShaderRaw(addOn);
+export const scaleTexSrc: string = processShaderRaw(scaleTex);

@@ -13,6 +13,7 @@ import { VelocityCS } from '../simulator/Velocity';
 import { FlowRecombineCS } from '../simulator/FlowRecombineCS';
 import { HeightRecombineCS } from '../simulator/HeightRecombineCS';
 import { AddOnCS } from "../simulator/AddOnCs";
+import { ScaleTexCs } from '../simulator/ScaleTexCs';
 
 export class NaiveRenderer extends renderer.Renderer {
     sceneUniformsBindGroupLayout: GPUBindGroupLayout;
@@ -904,7 +905,13 @@ export class NaiveRenderer extends renderer.Renderer {
         if(this.initMode === 'terrain') {
             //Replace terrainTexture with one loaded from the url
             let terrainUrl = new URL("../../scenes/terrainTexture/terrainTexture.png", import.meta.url).href;
-            this.loadHeightmapTexture(renderer.device, terrainUrl, this.terrainTexture);
+            this.loadHeightmapTexture(renderer.device, terrainUrl, this.terrainTexture).then(() => {
+                //After loading, apply the offset again
+                let tempScaleCS = new ScaleTexCs(renderer.device);
+                tempScaleCS.run(this.terrainTexture, 3, this.heightW, this.heightH); //Scale terrain heights by 5
+                let tempAddCS = new AddOnCS(renderer.device);
+                tempAddCS.run(this.terrainTexture, this.terrainOffsetTexture, this.heightW, this.heightH);
+            });
         }
 
         this.diffuseHeight = new DiffuseCS(
